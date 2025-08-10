@@ -2,7 +2,7 @@ import * as pdfjsLib from "pdfjs-dist";
 import { createBankParser } from "./bankParsers.js";
 
 // Настройка worker для pdfjs (используем локальный файл)
-pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+pdfjsLib.GlobalWorkerOptions.workerSrc = "/budget/pdf.worker.min.mjs";
 
 /**
  * Сервис для парсинга PDF файлов с банковскими выписками
