@@ -784,7 +784,7 @@ defineExpose({
       <td class="whitespace-nowrap">
         <button
           @click="showDeleteConfirmation(row)"
-          class="px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 transition-colors text-xs"
+          class="px-2 py-1 bg-red-300 text-white rounded hover:bg-red-500 transition-colors text-xs"
           title="Удалить транзакцию"
         >
           🗑️

@@ -399,49 +399,50 @@ function clearAllData() {
             Здесь отображаются все сохраненные выписки из локальной базы данных. Вы можете
             просматривать, анализировать и экспортировать данные.
           </p>
-          <div class="flex flex-wrap gap-2">
-            <button
-              @click="showMonthlyTable = true"
-              class="px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium text-sm"
-            >
-              📊 По месяцам
-            </button>
+          <div class="flex justify-between">
+            <div class="flex flex-wrap gap-2">
+              <button
+                @click="showMonthlyTable = true"
+                class="px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium text-sm"
+              >
+                📊 По месяцам
+              </button>
 
-            <div class="w-4"></div>
+              <div class="w-4"></div>
 
-            <button
-              @click="showAddTransactionModal = true"
-              class="px-3 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-medium text-sm"
-            >
-              ➕ Добавить
-            </button>
+              <button
+                @click="showAddTransactionModal = true"
+                class="px-3 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-medium text-sm"
+              >
+                ➕ Добавить
+              </button>
 
-            <div class="w-4"></div>
+              <div class="w-4"></div>
 
-            <button
-              @click="exportData"
-              :disabled="!hasTransactions"
-              :class="[
-                'px-3 py-2 rounded-lg transition-colors font-medium text-sm',
-                hasTransactions
-                  ? 'bg-green-600 text-white hover:bg-green-700'
-                  : 'bg-gray-300 text-gray-500 cursor-not-allowed',
-              ]"
-            >
-              📥 Экспорт
-            </button>
-            <button
-              @click="importData"
-              class="px-3 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors font-medium text-sm"
-            >
-              📤 Импорт
-            </button>
+              <button
+                @click="exportData"
+                :disabled="!hasTransactions"
+                :class="[
+                  'px-3 py-2 rounded-lg transition-colors font-medium text-sm',
+                  hasTransactions
+                    ? 'bg-green-600 text-white hover:bg-green-700'
+                    : 'bg-gray-300 text-gray-500 cursor-not-allowed',
+                ]"
+              >
+                📥 Экспорт
+              </button>
+              <button
+                @click="importData"
+                class="px-3 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors font-medium text-sm"
+              >
+                📤 Импорт
+              </button>
 
-            <div class="w-4"></div>
-
+              <div class="w-4"></div>
+            </div>
             <button
               @click="clearAllData"
-              class="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium text-sm"
+              class="px-3 py-2 bg-red-300 text-white rounded-lg hover:bg-red-500 transition-colors font-medium text-sm"
             >
               🗑️ Очистить
             </button>
