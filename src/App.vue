@@ -3,6 +3,7 @@ import FileUpload from "./components/ui/FileUpload.vue";
 import AllTransactionsTable from "./components/AllTransactionsTable.vue";
 import MonthlyTable from "./components/MonthlyTable.vue";
 import AddTransactionModal from "./components/ui/AddTransactionModal.vue";
+import PWAInstallButton from "./components/PWAInstallButton.vue";
 import { ref, onMounted, computed } from "vue";
 
 const allTable = ref(null);
@@ -472,6 +473,9 @@ function clearAllData() {
         @close="showAddTransactionModal = false"
         @add-transaction="handleAddTransaction"
       />
+
+      <!-- Кнопка установки PWA -->
+      <PWAInstallButton />
     </div>
   </div>
 </template>

@@ -16,7 +16,33 @@ export default defineConfig(({ mode }) => ({
     UnoCSS(),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["favicon.ico", "favicon.svg", "favicon-16x16.png", "favicon-32x32.png"],
+      includeAssets: [
+        "favicon.ico",
+        "favicon.svg",
+        "favicon-16x16.svg",
+        "favicon-32x32.svg",
+        "favicon-512x512.svg",
+      ],
+      devOptions: {
+        enabled: true,
+        type: "module",
+      },
+      workbox: {
+        globPatterns: ["**/*.{js,css,html,ico,png,svg}"],
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/alastromoody\.github\.io\/budget\/.*/i,
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "app-cache",
+              expiration: {
+                maxEntries: 50,
+                maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
+              },
+            },
+          },
+        ],
+      },
       manifest: {
         id: "family-budget-app",
         name: "Семейный бюджет",
@@ -31,9 +57,6 @@ export default defineConfig(({ mode }) => ({
         categories: ["finance", "productivity"],
         lang: "ru",
         dir: "ltr",
-        launch_handler: {
-          client_mode: "navigate-existing",
-        },
         icons: [
           {
             src: "/budget/favicon.svg",
@@ -48,15 +71,21 @@ export default defineConfig(({ mode }) => ({
             purpose: "maskable",
           },
           {
-            src: "/budget/favicon-32x32.png",
-            sizes: "32x32",
-            type: "image/png",
+            src: "/budget/favicon-512x512.svg",
+            sizes: "512x512",
+            type: "image/svg+xml",
             purpose: "any",
           },
           {
-            src: "/budget/favicon-16x16.png",
+            src: "/budget/favicon-32x32.svg",
+            sizes: "32x32",
+            type: "image/svg+xml",
+            purpose: "any",
+          },
+          {
+            src: "/budget/favicon-16x16.svg",
             sizes: "16x16",
-            type: "image/png",
+            type: "image/svg+xml",
             purpose: "any",
           },
           {
