@@ -32,7 +32,7 @@ export default defineConfig(({ mode }) => ({
         lang: "ru",
         dir: "ltr",
         launch_handler: {
-          client_mode: "navigate-existing"
+          client_mode: "navigate-existing",
         },
         icons: [
           {
