@@ -9,6 +9,7 @@ import { visualizer } from "rollup-plugin-visualizer";
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => ({
+  base: "/budget",
   plugins: [
     vue(),
     vueDevTools(),
@@ -67,14 +68,29 @@ export default defineConfig(({ mode }) => ({
     rollupOptions: {
       output: {
         manualChunks: (id) => {
+          // Vue core
           if (id.includes("vue") && !id.includes("unocss")) {
             return "vue";
           }
+          // UnoCSS
           if (id.includes("unocss")) {
             return "unocss";
           }
+          // Icons
           if (id.includes("@iconify")) {
             return "icons";
+          }
+          // Excel parsing
+          if (id.includes("exceljs") || id.includes("excelParser")) {
+            return "excel";
+          }
+          // PDF parsing
+          if (id.includes("pdfjs") || id.includes("pdfParser")) {
+            return "pdf";
+          }
+          // Database
+          if (id.includes("idb-keyval")) {
+            return "database";
           }
         },
       },

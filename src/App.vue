@@ -253,8 +253,8 @@ function importData() {
 }
 
 function clearAllData() {
-  if (allTable.value && allTable.value.clearAllData) {
-    allTable.value.clearAllData();
+  if (allTable.value && allTable.value.showClearAllConfirmation) {
+    allTable.value.showClearAllConfirmation();
   }
 }
 </script>

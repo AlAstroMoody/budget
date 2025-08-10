@@ -1,16 +1,34 @@
-import { excelParser } from "./excelParser";
-import { pdfParser } from "./pdfParser";
-
 /**
  * Универсальный парсер файлов банковских выписок
  * Автоматически определяет тип файла и использует соответствующий парсер
  */
 export class FileParser {
   constructor() {
-    this.parsers = {
-      excel: excelParser,
-      pdf: pdfParser,
-    };
+    this.parsers = {};
+  }
+
+  /**
+   * Динамически загружает парсер по требованию
+   */
+  async loadParser(fileType) {
+    if (this.parsers[fileType]) {
+      return this.parsers[fileType];
+    }
+
+    try {
+      if (fileType === "excel") {
+        const { excelParser } = await import("./excelParser");
+        this.parsers.excel = excelParser;
+        return excelParser;
+      } else if (fileType === "pdf") {
+        const { pdfParser } = await import("./pdfParser");
+        this.parsers.pdf = pdfParser;
+        return pdfParser;
+      }
+    } catch (error) {
+      console.error(`Ошибка загрузки парсера ${fileType}:`, error);
+      throw new Error(`Не удалось загрузить парсер для ${fileType}`);
+    }
   }
 
   /**
@@ -52,10 +70,8 @@ export class FileParser {
 
       const fileType = this.detectFileType(file);
 
-      const parser = this.parsers[fileType];
-      if (!parser) {
-        throw new Error(`Парсер для типа ${fileType} не найден`);
-      }
+      // Динамически загружаем парсер
+      const parser = await this.loadParser(fileType);
 
       // Вызываем соответствующий метод парсера
       if (fileType === "excel") {

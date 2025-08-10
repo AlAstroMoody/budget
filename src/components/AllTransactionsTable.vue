@@ -15,10 +15,10 @@ import {
   exportAllDataFromDb,
   importDataToDb,
   deleteAllTransactionsFromDb,
+  deleteTransactionFromDb,
   addCategoryToDb,
   getCategoriesFromDb,
   checkDuplicateTransactions,
-  removeDuplicateTransactionsFromDb,
 } from "../services/db";
 
 defineProps({
@@ -39,6 +39,11 @@ const userCategories = ref([]);
 
 // Ключ для принудительного обновления таблицы
 const tableKey = ref(0);
+
+// Состояние для модальных окон
+const showDeleteModal = ref(false);
+const transactionToDelete = ref(null);
+const showClearAllModal = ref(false);
 
 // Загружаем пользовательские категории из БД
 async function loadUserCategoriesFromDb() {
@@ -147,6 +152,15 @@ async function addStatement(newStatement) {
   }
 }
 
+// Функция для установки дат по умолчанию (от начала года до сегодня)
+function setDefaultDates() {
+  const today = new Date();
+  const startOfYear = new Date(today.getFullYear(), 0, 1); // 1 января текущего года
+
+  dateFrom.value = startOfYear.toISOString().split("T")[0];
+  dateTo.value = today.toISOString().split("T")[0];
+}
+
 // Локальные фильтры и сортировка
 const selectedBank = ref("");
 const selectedCategory = ref("");
@@ -155,6 +169,9 @@ const dateTo = ref("");
 const search = ref("");
 const sortField = ref("date");
 const sortDirection = ref("desc");
+
+// Устанавливаем даты по умолчанию при инициализации
+setDefaultDates();
 
 // Реактивная переменная для принудительного обновления computed
 const refreshTrigger = ref(0);
@@ -427,13 +444,13 @@ async function importData(event) {
   event.target.value = "";
 }
 
-async function clearAllData() {
-  if (
-    !confirm("Вы уверены, что хотите удалить ВСЕ данные из базы? Это действие нельзя отменить.")
-  ) {
-    return;
-  }
+// Показать модальное окно очистки всех данных
+function showClearAllConfirmation() {
+  showClearAllModal.value = true;
+}
 
+// Очистка всех данных
+async function clearAllData() {
   try {
     const result = await deleteAllTransactionsFromDb();
     notify(`Удалено ${result.deletedCount} транзакций из базы`, "success");
@@ -444,27 +461,14 @@ async function clearAllData() {
   } catch (error) {
     notify("Ошибка при удалении данных", "error");
     console.error("Ошибка удаления:", error);
+  } finally {
+    showClearAllModal.value = false;
   }
 }
 
-async function removeDuplicates() {
-  if (!confirm("Удалить дубликаты из базы данных? Это действие нельзя отменить.")) {
-    return;
-  }
-
-  try {
-    const result = await removeDuplicateTransactionsFromDb();
-    notify(
-      `Удалено ${result.removedCount} дубликатов, осталось ${result.remainingCount} уникальных транзакций`,
-      "success"
-    );
-
-    // Перезагружаем данные из БД
-    await loadStatementsFromDb();
-  } catch (error) {
-    notify("Ошибка при удалении дубликатов", "error");
-    console.error("Ошибка удаления дубликатов:", error);
-  }
+// Отмена очистки всех данных
+function cancelClearAll() {
+  showClearAllModal.value = false;
 }
 
 async function onEdit(row, field, value) {
@@ -511,6 +515,11 @@ async function onEdit(row, field, value) {
 // Установка режима базы данных
 function setDatabaseMode(mode) {
   isDatabaseMode.value = mode;
+
+  // При переключении в режим базы данных обновляем даты по умолчанию
+  if (mode) {
+    setDefaultDates();
+  }
 }
 
 // Добавление транзакции вручную
@@ -537,6 +546,65 @@ async function addManualTransaction(transaction) {
   notify("Транзакция добавлена", "success");
 }
 
+// Показать модальное окно удаления транзакции
+function showDeleteConfirmation(transaction) {
+  transactionToDelete.value = transaction;
+  showDeleteModal.value = true;
+}
+
+// Удаление транзакции
+async function deleteTransaction() {
+  if (!transactionToDelete.value) return;
+
+  try {
+    if (isDatabaseMode.value) {
+      // Удаляем из базы данных по ID
+      if (transactionToDelete.value.id) {
+        await deleteTransactionFromDb(transactionToDelete.value.id);
+        notify("Транзакция удалена из базы данных", "success");
+
+        // Перезагружаем данные из базы для обновления таблицы
+        await loadStatementsFromDb();
+      } else {
+        throw new Error("Транзакция не имеет ID для удаления из базы данных");
+      }
+    } else {
+      // Удаляем из statements (несохраненные данные)
+      for (let i = 0; i < statements.value.length; i++) {
+        const statement = statements.value[i];
+        const transactionIndex = statement.transactions.findIndex(
+          (t) => t === transactionToDelete.value
+        );
+        if (transactionIndex !== -1) {
+          statement.transactions.splice(transactionIndex, 1);
+          // Если в выписке не осталось транзакций, удаляем её
+          if (statement.transactions.length === 0) {
+            statements.value.splice(i, 1);
+          }
+          break;
+        }
+      }
+      notify("Транзакция удалена из несохраненных данных", "success");
+
+      // Принудительно обновляем таблицу для несохраненных данных
+      tableKey.value++;
+    }
+
+    // Закрываем модальное окно
+    showDeleteModal.value = false;
+    transactionToDelete.value = null;
+  } catch (error) {
+    console.error("Ошибка при удалении транзакции:", error);
+    notify("Ошибка при удалении транзакции", "error");
+  }
+}
+
+// Отмена удаления
+function cancelDelete() {
+  showDeleteModal.value = false;
+  transactionToDelete.value = null;
+}
+
 defineExpose({
   addStatement,
   addManualTransaction,
@@ -545,7 +613,7 @@ defineExpose({
   exportData,
   importData,
   clearAllData,
-  removeDuplicates,
+  showClearAllConfirmation,
   getAllTransactions,
   getCategories: () => availableCategories.value,
   saveAllToDb,
@@ -664,8 +732,8 @@ defineExpose({
         Категория
         <span v-if="sortField === 'category'">{{ sortDirection === "asc" ? "▲" : "▼" }}</span>
       </th>
-      <!-- Здесь можно добавить дополнительные столбцы -->
       <th class="table-comment min-w-40 max-w-60">Комментарий</th>
+      <th class="whitespace-nowrap w-16">Действия</th>
     </template>
     <template #row="{ row }">
       <td class="whitespace-nowrap">
@@ -705,7 +773,6 @@ defineExpose({
           @update:modelValue="(value) => onEdit(row, 'category', value)"
         />
       </td>
-      <!-- Здесь можно добавить дополнительные ячейки -->
       <td
         class="table-comment"
         contenteditable
@@ -714,8 +781,117 @@ defineExpose({
       >
         {{ row.comment || "" }}
       </td>
+      <td class="whitespace-nowrap">
+        <button
+          @click="showDeleteConfirmation(row)"
+          class="px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 transition-colors text-xs"
+          title="Удалить транзакцию"
+        >
+          🗑️
+        </button>
+      </td>
     </template>
   </Table>
+
+  <!-- Модальное окно подтверждения удаления -->
+  <div
+    v-if="showDeleteModal"
+    class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+    @click="cancelDelete"
+  >
+    <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4" @click.stop>
+      <div class="p-6">
+        <div class="flex items-center mb-4">
+          <div class="text-red-500 text-2xl mr-3">⚠️</div>
+          <h3 class="text-lg font-semibold text-gray-900">Удалить транзакцию?</h3>
+        </div>
+
+        <div class="mb-6">
+          <p class="text-gray-600 mb-3">Вы действительно хотите удалить эту транзакцию?</p>
+          <div class="bg-gray-50 p-3 rounded border">
+            <div class="text-sm">
+              <div class="font-medium">{{ transactionToDelete?.description }}</div>
+              <div class="text-gray-500">
+                {{
+                  transactionToDelete?.date
+                    ? parseDate(transactionToDelete.date)?.toLocaleDateString()
+                    : ""
+                }}
+                • {{ transactionToDelete?.bank }} •
+                <span :class="transactionToDelete?.amount > 0 ? 'text-green-600' : 'text-red-600'">
+                  {{ transactionToDelete?.amount > 0 ? "+" : ""
+                  }}{{
+                    transactionToDelete?.amount?.toLocaleString("ru-RU", {
+                      style: "currency",
+                      currency: "RUB",
+                    })
+                  }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex space-x-3">
+          <button
+            @click="cancelDelete"
+            class="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            Отмена
+          </button>
+          <button
+            @click="deleteTransaction"
+            class="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+          >
+            Удалить
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Модальное окно подтверждения очистки всех данных -->
+  <div
+    v-if="showClearAllModal"
+    class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+    @click="cancelClearAll"
+  >
+    <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4" @click.stop>
+      <div class="p-6">
+        <div class="flex items-center mb-4">
+          <div class="text-red-500 text-2xl mr-3">🗑️</div>
+          <h3 class="text-lg font-semibold text-gray-900">Очистить все данные?</h3>
+        </div>
+
+        <div class="mb-6">
+          <p class="text-gray-600 mb-3">
+            Вы действительно хотите удалить ВСЕ данные из базы? Это действие нельзя отменить.
+          </p>
+          <div class="bg-red-50 p-3 rounded border border-red-200">
+            <div class="text-sm text-red-700">
+              <div class="font-medium">⚠️ Внимание!</div>
+              <div>Все транзакции, категории и настройки будут безвозвратно удалены.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex space-x-3">
+          <button
+            @click="cancelClearAll"
+            class="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            Отмена
+          </button>
+          <button
+            @click="clearAllData"
+            class="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+          >
+            Очистить все
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <style scoped>
