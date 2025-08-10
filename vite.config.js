@@ -18,6 +18,7 @@ export default defineConfig(({ mode }) => ({
       registerType: "autoUpdate",
       includeAssets: ["favicon.ico", "favicon.svg", "favicon-16x16.png", "favicon-32x32.png"],
       manifest: {
+        id: "family-budget-app",
         name: "Семейный бюджет",
         short_name: "Бюджет",
         description: "Local-first PWA приложение для управления семейными финансами",
@@ -30,27 +31,36 @@ export default defineConfig(({ mode }) => ({
         categories: ["finance", "productivity"],
         lang: "ru",
         dir: "ltr",
+        launch_handler: {
+          client_mode: "navigate-existing"
+        },
         icons: [
           {
-            src: "/favicon.svg",
+            src: "/budget/favicon.svg",
             sizes: "any",
             type: "image/svg+xml",
-            purpose: "any maskable",
+            purpose: "any",
           },
           {
-            src: "/favicon-32x32.png",
+            src: "/budget/favicon.svg",
+            sizes: "any",
+            type: "image/svg+xml",
+            purpose: "maskable",
+          },
+          {
+            src: "/budget/favicon-32x32.png",
             sizes: "32x32",
             type: "image/png",
             purpose: "any",
           },
           {
-            src: "/favicon-16x16.png",
+            src: "/budget/favicon-16x16.png",
             sizes: "16x16",
             type: "image/png",
             purpose: "any",
           },
           {
-            src: "/favicon.ico",
+            src: "/budget/favicon.ico",
             sizes: "64x64 32x32 24x24 16x16",
             type: "image/x-icon",
           },
