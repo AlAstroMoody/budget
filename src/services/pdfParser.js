@@ -29,23 +29,38 @@ export class PdfParser {
    */
   detectBankFormat(text) {
     const lower = text.toLowerCase();
+
+    // Проверяем признаки Альфа-Банка ПЕРВЫМИ (более специфичные)
+    if (
+      lower.includes("альфа-банк") ||
+      lower.includes("alfa-bank") ||
+      lower.includes("alfabank") ||
+      lower.includes("альфа банк") ||
+      lower.includes("пао альфа-банк") ||
+      lower.includes("ао альфа-банк") ||
+      text.includes("АЛЬФА-БАНК") ||
+      text.includes("АЛЬФА БАНК") ||
+      text.includes("АО «АЛЬФА-БАНК»") ||
+      text.includes("ПАО «АЛЬФА-БАНК»")
+    ) {
+      return { bankKey: "alfabank", bankName: "Альфа-Банк" };
+    }
+
     // Проверяем признаки Сбербанка
-    if (text.includes("Сбербанк") || lower.includes("сбербанк")) {
+    if (text.includes("Сбербанк") || lower.includes("сбербанк") || text.includes("ПАО СБЕРБАНК")) {
       return { bankKey: "sberbank", bankName: "Сбербанк" };
     }
+
     // Проверяем признаки Тинькофф/ТБАНК
     if (lower.includes("тинькофф") || lower.includes("tinkoff") || lower.includes("тбанк")) {
       return { bankKey: "tinkoff", bankName: "Тинькофф" };
     }
+
     // Проверяем признаки Озон-банка
     if (text.includes("ОЗОН Банк") || lower.includes("ozon")) {
       return { bankKey: "ozon", bankName: "Озон Банк" };
     }
-    // Проверяем признаки Альфа-Банка (ищем по всему тексту, включая конец)
-    if (lower.includes("альфа-банк") || lower.includes("alfa-bank") || lower.includes("alfabank")) {
-      return { bankKey: "alfabank", bankName: "Альфа-Банк" };
-    }
-    // Можно добавить другие банки
+
     return null;
   }
 
@@ -77,19 +92,44 @@ export class PdfParser {
       let account = undefined;
       let owner = undefined;
       let period = undefined;
-      // Примеры для Озон-банка, можно доработать для других банков
-      const accountMatch = fullText.match(/(№\s*\d{20,})/);
-      if (accountMatch) account = accountMatch[0].replace(/[^\d]/g, "");
-      const ownerMatch = fullText.match(/Владелец:([^\n]+)/);
-      if (ownerMatch) owner = ownerMatch[1].trim();
-      const periodMatch = fullText.match(
-        /Период выписки:\s*(\d{2}\.\d{2}\.\d{4})\s*[–-]\s*(\d{2}\.\d{2}\.\d{4})/
-      );
-      if (periodMatch) {
-        period = {
-          from: this.parseDate(periodMatch[1]),
-          to: this.parseDate(periodMatch[2]),
-        };
+
+      // Извлечение метаданных в зависимости от банка
+      if (bankFormat.bankKey === "alfabank") {
+        // Метаданные для Альфа-банка
+        const accountMatch = fullText.match(/(?:Счет|№\s*счета|Номер счета):\s*(\d{20,})/i);
+        if (accountMatch) {
+          account = accountMatch[1];
+        }
+
+        const ownerMatch = fullText.match(/(?:Владелец|Клиент):\s*([^\n]+)/i);
+        if (ownerMatch) {
+          owner = ownerMatch[1].trim();
+        }
+
+        const periodMatch = fullText.match(
+          /(?:Период|За период|Выписка за):\s*(\d{2}\.\d{2}\.\d{4})\s*[–-]\s*(\d{2}\.\d{2}\.\d{4})/i
+        );
+        if (periodMatch) {
+          period = {
+            from: this.parseDate(periodMatch[1]),
+            to: this.parseDate(periodMatch[2]),
+          };
+        }
+      } else {
+        // Общие метаданные для других банков
+        const accountMatch = fullText.match(/(№\s*\d{20,})/);
+        if (accountMatch) account = accountMatch[0].replace(/[^\d]/g, "");
+        const ownerMatch = fullText.match(/Владелец:([^\n]+)/);
+        if (ownerMatch) owner = ownerMatch[1].trim();
+        const periodMatch = fullText.match(
+          /Период выписки:\s*(\d{2}\.\d{2}\.\d{4})\s*[–-]\s*(\d{2}\.\d{2}\.\d{4})/
+        );
+        if (periodMatch) {
+          period = {
+            from: this.parseDate(periodMatch[1]),
+            to: this.parseDate(periodMatch[2]),
+          };
+        }
       }
 
       // Извлекаем транзакции
@@ -125,8 +165,14 @@ export class PdfParser {
       // Создаем банк-специфичный парсер
       const bankParser = createBankParser(bankFormat.bankKey);
 
+      // Для Альфа-банка применяем дополнительную предобработку текста
+      let processedText = text;
+      if (bankFormat.bankKey === "alfabank") {
+        processedText = this.preprocessAlfabankText(text);
+      }
+
       // Используем банк-специфичный парсер для извлечения транзакций
-      const transactions = bankParser.extractTransactions(text);
+      const transactions = bankParser.extractTransactions(processedText);
 
       // Удаляем дубликаты
       const uniqueTransactions = [];
@@ -147,6 +193,28 @@ export class PdfParser {
       console.error(`❌ Ошибка при извлечении транзакций для банка ${bankFormat.bankKey}:`, error);
       return [];
     }
+  }
+
+  /**
+   * Предобработка текста для Альфа-банка
+   */
+  preprocessAlfabankText(text) {
+    // Удаляем лишние пробелы и переносы строк
+    let processed = text.replace(/\s+/g, " ").trim();
+
+    // Удаляем служебную информацию
+    const servicePatterns = [
+      /АЛЬФА-БАНК.*?www\.alfabank\.ru/gi,
+      /Генеральная лицензия.*?Банка России/gi,
+      /Дата формирования.*?\d{2}\.\d{2}\.\d{4}/gi,
+      /Страница \d+ из \d+/gi,
+    ];
+
+    for (const pattern of servicePatterns) {
+      processed = processed.replace(pattern, "");
+    }
+
+    return processed;
   }
 
   /**
@@ -307,6 +375,13 @@ export class PdfParser {
       "дата формирования",
       "пао сбербанк",
       "www.sberbank.ru",
+      "альфа-банк",
+      "www.alfabank.ru",
+      "генеральная лицензия банка россии",
+      "страница",
+      "итого",
+      "баланс на начало",
+      "баланс на конец",
     ];
 
     // Проверяем, не содержит ли описание служебную информацию

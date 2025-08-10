@@ -314,17 +314,26 @@ export class AlfabankParser extends BaseBankParser {
   parseAmount(amountString) {
     try {
       // Убираем все пробелы и символы валюты
-      let clean = amountString.replace(/\s/g, "").replace(/₽/g, "");
+      let clean = amountString.replace(/\s/g, "").replace(/₽/g, "").replace(/RUR/g, "");
 
-      // Для Альфа-банка: +4 164.04 -> 4164.04
-      const match = clean.match(/[+-]?(\d+(?:\.\d{2})?)/);
+      // Для Альфа-банка: ищем число с возможными разделителями тысяч и десятичными знаками
+      const match = clean.match(/[+-]?(\d{1,3}(?:\s\d{3})*(?:[.,]\d{2})?|\d+(?:[.,]\d{2})?)/);
+
+      // Если первое регулярное выражение не сработало, пробуем более точное
+      if (!match || match[0].length < clean.length) {
+        const altMatch = clean.match(/[+-]?\d+(?:[.,]\d{2})?/);
+        if (altMatch) {
+          const num = altMatch[0].replace(",", ".");
+          return parseFloat(num);
+        }
+      }
 
       if (!match) {
         return 0;
       }
 
-      let num = match[0].replace(/\s/g, "");
-
+      // Убираем разделители тысяч (пробелы) и заменяем запятую на точку
+      let num = match[0].replace(/\s/g, "").replace(",", ".");
       return parseFloat(num);
     } catch (error) {
       console.error("Ошибка при парсинге суммы Альфа-банка:", amountString, error);
@@ -350,28 +359,34 @@ export class AlfabankParser extends BaseBankParser {
   extractTransactions(text) {
     const transactions = [];
 
-    // Паттерн для поиска транзакций Альфа-банка в тексте
-    // Формат: ДАТА ВРЕМЯ ОПИСАНИЕ СУММА ₽
-    const alfaTransactionPattern =
-      /(\d{2}\.\d{2}\.\d{4})\s+\d{2}:\d{2}\s+(.+?)\s+([+-]?\d[\d\s]*[.,]\d{2})\s*₽/g;
+    // Паттерн для формата PDF Альфа-банка: ДАТА КОД ОПИСАНИЕ СУММА RUR
+    const alfaPattern =
+      /(\d{2}\.\d{2}\.\d{4})\s+([A-Z0-9_]+)\s+(.+?)\s+([+-]?\d[\d\s]*[.,]\d{2})\s*RUR/g;
 
     let match;
-    while ((match = alfaTransactionPattern.exec(text)) !== null) {
-      const [, dateStr, description, amountStr] = match;
+    while ((match = alfaPattern.exec(text)) !== null) {
+      const [, dateStr, code, description, amountStr] = match;
 
       const date = this.parseDate(dateStr);
       const amount = this.parseAmount(amountStr);
 
       if (date && amount !== 0) {
+        // Добавляем код операции в описание для уникальности
+        let enhancedDescription = description.trim();
+        if (code) {
+          enhancedDescription = `[${code}] ${enhancedDescription}`;
+        }
+
         const transaction = {
           date,
-          description: description.trim(),
+          description: enhancedDescription,
           amount,
-          category: this.detectCategory(description),
+          category: this.detectCategory(description), // Используем оригинальное описание для категории
           bank: "Альфа-банк",
           raw: match[0],
           meta: {
             bank: "Альфа-банк",
+            code: code,
           },
         };
         transactions.push(transaction);
@@ -381,8 +396,31 @@ export class AlfabankParser extends BaseBankParser {
     return transactions;
   }
 
-  detectCategory(_description) {
-    // Логика определения категории для Альфа-банка
+  detectCategory(description) {
+    const desc = (description || "").toLowerCase();
+
+    if (desc.includes("пенсия пфр")) {
+      return "Пенсия";
+    }
+    if (desc.includes("перевод с карты") || desc.includes("альфа-банк")) {
+      return "Переводы";
+    }
+    if (desc.includes("прочие операции") || desc.includes("прочие") || desc.includes("прочее")) {
+      return "Прочее";
+    }
+    if (desc.includes("продукт") || desc.includes("магнит") || desc.includes("пятерочка")) {
+      return "Продукты";
+    }
+    if (desc.includes("транспорт") || desc.includes("метро") || desc.includes("автобус")) {
+      return "Транспорт";
+    }
+    if (desc.includes("кафе") || desc.includes("ресторан") || desc.includes("еда")) {
+      return "Питание";
+    }
+    if (desc.includes("зарплат") || desc.includes("доход")) {
+      return "Доходы";
+    }
+
     return "Прочее";
   }
 }

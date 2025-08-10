@@ -45,6 +45,10 @@ const showDeleteModal = ref(false);
 const transactionToDelete = ref(null);
 const showClearAllModal = ref(false);
 
+// Состояние для массового удаления
+const selectedTransactions = ref(new Set());
+const showBulkDeleteModal = ref(false);
+
 // Загружаем пользовательские категории из БД
 async function loadUserCategoriesFromDb() {
   try {
@@ -90,6 +94,120 @@ function notify(msg, type = "info", timeout = 3500) {
   setTimeout(() => {
     notifications.value = notifications.value.filter((n) => n.id !== id);
   }, timeout);
+}
+
+// Функции для массового удаления
+function toggleTransactionSelection(transactionId) {
+  if (selectedTransactions.value.has(transactionId)) {
+    selectedTransactions.value.delete(transactionId);
+  } else {
+    selectedTransactions.value.add(transactionId);
+  }
+}
+
+function selectAllTransactions() {
+  selectedTransactions.value.clear();
+  filtered.value.forEach((transaction) => {
+    selectedTransactions.value.add(getTransactionId(transaction));
+  });
+}
+
+function deselectAllTransactions() {
+  selectedTransactions.value.clear();
+}
+
+function getTransactionId(transaction) {
+  // Создаем уникальный ID для транзакции
+  return `${transaction.date?.getTime() || transaction.date}-${transaction.description}-${
+    transaction.amount
+  }-${transaction.bank}`;
+}
+
+function isTransactionSelected(transaction) {
+  return selectedTransactions.value.has(getTransactionId(transaction));
+}
+
+function getSelectedTransactionsCount() {
+  return selectedTransactions.value.size;
+}
+
+function showBulkDeleteConfirmation() {
+  if (selectedTransactions.value.size === 0) {
+    notify("Выберите транзакции для удаления", "warning");
+    return;
+  }
+  showBulkDeleteModal.value = true;
+}
+
+async function deleteSelectedTransactions() {
+  try {
+    const transactionsToDelete = filtered.value.filter((transaction) =>
+      selectedTransactions.value.has(getTransactionId(transaction))
+    );
+
+    if (isDatabaseMode.value) {
+      // Проверяем, что все транзакции имеют ID
+      const transactionsWithoutId = transactionsToDelete.filter((t) => !t.id);
+      if (transactionsWithoutId.length > 0) {
+        console.warn("Найдены транзакции без ID:", transactionsWithoutId);
+        notify("Некоторые транзакции не могут быть удалены (отсутствует ID)", "warning");
+      }
+
+      // Удаляем из базы данных только транзакции с ID
+      let deletedCount = 0;
+      for (const transaction of transactionsToDelete) {
+        if (transaction.id) {
+          await deleteTransactionFromDb(transaction.id);
+          deletedCount++;
+        } else {
+          console.warn("Транзакция без ID:", transaction);
+        }
+      }
+
+      // Перезагружаем данные из БД
+      await loadStatementsFromDb();
+      // Принудительно обновляем таблицу
+      tableKey.value++;
+
+      if (deletedCount < transactionsToDelete.length) {
+        notify(`Удалено ${deletedCount} из ${transactionsToDelete.length} транзакций`, "warning");
+      }
+    } else {
+      // Удаляем из памяти
+      for (const transaction of transactionsToDelete) {
+        const statementIndex = statements.value.findIndex((s) =>
+          s.transactions.some((t) => getTransactionId(t) === getTransactionId(transaction))
+        );
+        if (statementIndex !== -1) {
+          const transactionIndex = statements.value[statementIndex].transactions.findIndex(
+            (t) => getTransactionId(t) === getTransactionId(transaction)
+          );
+          if (transactionIndex !== -1) {
+            statements.value[statementIndex].transactions.splice(transactionIndex, 1);
+          }
+        }
+      }
+    }
+
+    selectedTransactions.value.clear();
+    showBulkDeleteModal.value = false;
+
+    // Принудительно обновляем таблицу
+    tableKey.value++;
+
+    if (isDatabaseMode.value) {
+      // Уведомление уже отправлено выше для базы данных
+    } else {
+      notify(`Удалено ${transactionsToDelete.length} транзакций`, "success");
+    }
+  } catch (error) {
+    console.error("Ошибка при массовом удалении:", error);
+    notify("Ошибка при удалении транзакций", "error");
+  }
+}
+
+function cancelBulkDelete() {
+  showBulkDeleteModal.value = false;
 }
 
 // Добавление новой выписки
@@ -565,6 +683,8 @@ async function deleteTransaction() {
 
         // Перезагружаем данные из базы для обновления таблицы
         await loadStatementsFromDb();
+        // Принудительно обновляем таблицу
+        tableKey.value++;
       } else {
         throw new Error("Транзакция не имеет ID для удаления из базы данных");
       }
@@ -713,8 +833,49 @@ defineExpose({
     <div class="ml-auto text-xs text-gray-500">Показано: {{ filtered.length }}</div>
   </div>
 
+  <!-- Кнопки массового удаления -->
+  <div
+    v-if="getSelectedTransactionsCount() > 0"
+    class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg"
+  >
+    <div class="flex items-center justify-between">
+      <div class="flex items-center space-x-4">
+        <span class="text-sm font-medium text-blue-800">
+          Выбрано: {{ getSelectedTransactionsCount() }} транзакций
+        </span>
+        <button
+          @click="deselectAllTransactions"
+          class="text-sm text-blue-600 hover:text-blue-800 underline"
+        >
+          Снять выделение
+        </button>
+      </div>
+      <button
+        @click="showBulkDeleteConfirmation"
+        class="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-colors text-sm"
+      >
+        Удалить выбранные ({{ getSelectedTransactionsCount() }})
+      </button>
+    </div>
+  </div>
+
   <Table :data="filtered" :key="tableKey">
     <template #header>
+      <th class="w-8">
+        <input
+          type="checkbox"
+          :checked="getSelectedTransactionsCount() === filtered.length && filtered.length > 0"
+          :indeterminate="
+            getSelectedTransactionsCount() > 0 && getSelectedTransactionsCount() < filtered.length
+          "
+          @change="
+            getSelectedTransactionsCount() === filtered.length
+              ? deselectAllTransactions()
+              : selectAllTransactions()
+          "
+          class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+        />
+      </th>
       <th class="cursor-pointer whitespace-nowrap" @click="setSort('date')">
         Дата
         <span v-if="sortField === 'date'">{{ sortDirection === "asc" ? "▲" : "▼" }}</span>
@@ -736,6 +897,14 @@ defineExpose({
       <th class="whitespace-nowrap w-16">Действия</th>
     </template>
     <template #row="{ row }">
+      <td class="w-8">
+        <input
+          type="checkbox"
+          :checked="isTransactionSelected(row)"
+          @change="toggleTransactionSelection(getTransactionId(row))"
+          class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+        />
+      </td>
       <td class="whitespace-nowrap">
         {{ row.date ? parseDate(row.date)?.toLocaleDateString() : "" }}
       </td>
@@ -887,6 +1056,50 @@ defineExpose({
             class="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
           >
             Очистить все
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Модальное окно подтверждения массового удаления -->
+  <div
+    v-if="showBulkDeleteModal"
+    class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+    @click="cancelBulkDelete"
+  >
+    <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4" @click.stop>
+      <div class="p-6">
+        <div class="flex items-center mb-4">
+          <div class="text-red-500 text-2xl mr-3">⚠️</div>
+          <h3 class="text-lg font-semibold text-gray-900">Удалить выбранные транзакции?</h3>
+        </div>
+
+        <div class="mb-6">
+          <p class="text-gray-600 mb-3">
+            Вы действительно хотите удалить {{ getSelectedTransactionsCount() }} транзакций? Это
+            действие нельзя отменить.
+          </p>
+          <div class="bg-red-50 p-3 rounded border border-red-200">
+            <div class="text-sm text-red-700">
+              <div class="font-medium">⚠️ Внимание!</div>
+              <div>Выбранные транзакции будут безвозвратно удалены.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex space-x-3">
+          <button
+            @click="cancelBulkDelete"
+            class="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            Отмена
+          </button>
+          <button
+            @click="deleteSelectedTransactions"
+            class="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+          >
+            Удалить {{ getSelectedTransactionsCount() }}
           </button>
         </div>
       </div>
