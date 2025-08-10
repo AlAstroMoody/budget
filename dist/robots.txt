@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://alastromoody.github.io/budget/sitemap.xml
+
+# PWA specific
+Allow: /manifest.webmanifest
+Allow: /sw.js
+Allow: /workbox-*.js
