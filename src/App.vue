@@ -88,7 +88,15 @@ async function handleCategoriesUpdated() {
 async function handleAddTransaction(transaction) {
   if (allTable.value && allTable.value.addManualTransaction) {
     await allTable.value.addManualTransaction(transaction);
-    hasUnsavedData.value = true;
+
+    // Проверяем, есть ли несохраненные данные (только в режиме загрузки файлов)
+    if (
+      allTable.value.statements &&
+      allTable.value.statements.length > 0 &&
+      !allTable.value.isDatabaseMode
+    ) {
+      hasUnsavedData.value = true;
+    }
   }
 }
 
@@ -387,7 +395,7 @@ function clearAllData() {
           <!-- Список поддерживаемых банков -->
           <div class="mb-3 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700">
             <span class="font-medium">🏦 Поддерживаемые банки:</span> Сбербанк, Тинькофф, Озон-банк,
-            Альфа-банк
+            Альфа-банк, Наличные
           </div>
           <FileUpload @file-parsed="handleFileParsed" />
         </div>

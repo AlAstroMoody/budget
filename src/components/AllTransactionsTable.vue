@@ -10,6 +10,7 @@ import {
 } from "../services/pdfParser";
 import {
   saveTransactionsToDb,
+  saveTransactionToDb,
   getAllTransactionsFromDb,
   updateTransactionInDb,
   exportAllDataFromDb,
@@ -120,7 +121,7 @@ function getTransactionId(transaction) {
   // Создаем уникальный ID для транзакции
   return `${transaction.date?.getTime() || transaction.date}-${transaction.description}-${
     transaction.amount
-  }-${transaction.bank}`;
+  }-${transaction.bank}-${transaction.category || ""}`;
 }
 
 function isTransactionSelected(transaction) {
@@ -284,12 +285,79 @@ const selectedBank = ref("");
 const selectedCategory = ref("");
 const dateFrom = ref("");
 const dateTo = ref("");
+const selectedMonth = ref("");
 const search = ref("");
 const sortField = ref("date");
 const sortDirection = ref("desc");
 
 // Устанавливаем даты по умолчанию при инициализации
 setDefaultDates();
+
+// Генерируем список месяцев для селекта
+const availableMonths = computed(() => {
+  const months = [];
+  const today = new Date();
+  const currentYear = today.getFullYear();
+
+  // Добавляем месяцы за последние 2 года и следующие 6 месяцев
+  for (let year = currentYear - 2; year <= currentYear + 1; year++) {
+    for (let month = 0; month < 12; month++) {
+      const date = new Date(year, month, 1);
+      const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
+      const monthLabel = date.toLocaleDateString("ru-RU", {
+        year: "numeric",
+        month: "long",
+      });
+      months.push({ key: monthKey, label: monthLabel, date });
+    }
+  }
+
+  // Сортируем по дате (новые сначала)
+  return months.sort((a, b) => b.date - a.date);
+});
+
+// Обработчик изменения выбранного месяца
+function onMonthChange(monthKey) {
+  if (!monthKey) {
+    // Сброс фильтра по месяцу
+    setDefaultDates();
+    selectedMonth.value = "";
+    return;
+  }
+
+  const [year, month] = monthKey.split("-").map(Number);
+  const startOfMonth = new Date(year, month - 1, 1);
+  const endOfMonth = new Date(year, month, 0); // Последний день месяца
+
+  dateFrom.value = startOfMonth.toISOString().split("T")[0];
+  dateTo.value = endOfMonth.toISOString().split("T")[0];
+  selectedMonth.value = monthKey;
+}
+
+// Синхронизация выбранного месяца с полями дат
+function syncSelectedMonth() {
+  if (!dateFrom.value || !dateTo.value) {
+    selectedMonth.value = "";
+    return;
+  }
+
+  const fromDate = new Date(dateFrom.value);
+  const toDate = new Date(dateTo.value);
+
+  // Проверяем, соответствует ли диапазон дат целому месяцу
+  const fromMonth = new Date(fromDate.getFullYear(), fromDate.getMonth(), 1);
+  const toMonth = new Date(toDate.getFullYear(), toDate.getMonth() + 1, 0);
+
+  if (fromDate.getTime() === fromMonth.getTime() && toDate.getTime() === toMonth.getTime()) {
+    const monthKey = `${fromDate.getFullYear()}-${String(fromDate.getMonth() + 1).padStart(
+      2,
+      "0"
+    )}`;
+    selectedMonth.value = monthKey;
+  } else {
+    selectedMonth.value = "";
+  }
+}
 
 // Реактивная переменная для принудительного обновления computed
 const refreshTrigger = ref(0);
@@ -345,6 +413,17 @@ const availableCategories = computed(() => {
     "Повседневные товары для ухода",
     "Семья",
     "Подарки друзьям",
+    "Траты на ком.услуги дома",
+    "Недвижимость",
+    "Мебель",
+    "Ремонт",
+    "Экстра траты ЗП Ви",
+    "ЗП Лё",
+    "Прочие доходы Ви",
+    "Прочие доходы Лё",
+    "Кэшбэк",
+    "% на остаток и вклады",
+    "Налоги",
     "Прочее",
   ];
 
@@ -482,7 +561,38 @@ async function loadStatementsFromDb() {
 
       if (uniqueTransactions.length < loadedTransactions.length) {
         const duplicateCount = loadedTransactions.length - uniqueTransactions.length;
-        notify(`Удалено ${duplicateCount} дубликатов при загрузке из БД`, "info");
+
+        // Физически удаляем дубликаты из базы данных
+        const seen = new Set();
+        const duplicateIds = [];
+
+        for (const transaction of loadedTransactions) {
+          const key = [
+            transaction.date instanceof Date
+              ? transaction.date.toISOString().slice(0, 10)
+              : transaction.date,
+            transaction.amount,
+            (transaction.description || "").replace(/\s+/g, "").toLowerCase(),
+            transaction.bank,
+            transaction.category || "",
+          ].join("|");
+
+          if (seen.has(key)) {
+            // Это дубликат, добавляем ID для удаления
+            if (transaction.id) {
+              duplicateIds.push(transaction.id);
+            }
+          } else {
+            seen.add(key);
+          }
+        }
+
+        // Удаляем дубликаты из БД
+        for (const duplicateId of duplicateIds) {
+          await deleteTransactionFromDb(duplicateId);
+        }
+
+        notify(`Удалено ${duplicateCount} дубликатов из базы данных`, "info");
       }
 
       // Группируем транзакции по банку для совместимости с существующим кодом
@@ -642,26 +752,43 @@ function setDatabaseMode(mode) {
 
 // Добавление транзакции вручную
 async function addManualTransaction(transaction) {
-  // Добавляем транзакцию в statements как отдельную "выписку"
-  const manualStatement = {
-    fileName: "Ручной ввод",
-    transactions: [transaction],
-    period: {
-      from: new Date(transaction.date),
-      to: new Date(transaction.date),
-    },
-    meta: {
-      source: "manual",
-      addedAt: new Date().toISOString(),
-    },
-  };
+  try {
+    if (isDatabaseMode.value) {
+      // Сохраняем транзакцию в базу данных
+      await saveTransactionToDb(transaction);
 
-  statements.value.push(manualStatement);
+      // Перезагружаем данные из базы для обновления таблицы
+      await loadStatementsFromDb();
+      // Принудительно обновляем таблицу
+      tableKey.value++;
 
-  // Принудительно обновляем таблицу
-  tableKey.value++;
+      notify("Транзакция добавлена в базу данных", "success");
+    } else {
+      // Добавляем транзакцию в statements как отдельную "выписку"
+      const manualStatement = {
+        fileName: "Наличные",
+        transactions: [transaction],
+        period: {
+          from: new Date(transaction.date),
+          to: new Date(transaction.date),
+        },
+        meta: {
+          source: "manual",
+          addedAt: new Date().toISOString(),
+        },
+      };
 
-  notify("Транзакция добавлена", "success");
+      statements.value.push(manualStatement);
+
+      // Принудительно обновляем таблицу
+      tableKey.value++;
+
+      notify("Транзакция добавлена в несохраненные данные", "success");
+    }
+  } catch (error) {
+    console.error("Ошибка при добавлении транзакции:", error);
+    notify("Ошибка при добавлении транзакции", "error");
+  }
 }
 
 // Показать модальное окно удаления транзакции
@@ -725,9 +852,59 @@ function cancelDelete() {
   transactionToDelete.value = null;
 }
 
+// Копирование транзакции
+async function copyTransaction(transaction) {
+  try {
+    // Создаем копию транзакции без ID и с новой датой создания
+    const copiedTransaction = {
+      ...transaction,
+      id: undefined, // Убираем старый ID
+      description: `${transaction.description} (копия)`,
+      createdAt: new Date().toISOString(),
+    };
+
+    if (isDatabaseMode.value) {
+      // Сохраняем копию в базу данных
+      await saveTransactionToDb(copiedTransaction);
+
+      // Перезагружаем данные из базы для обновления таблицы
+      await loadStatementsFromDb();
+      // Принудительно обновляем таблицу
+      tableKey.value++;
+
+      notify("Транзакция скопирована в базу данных", "success");
+    } else {
+      // Добавляем копию в statements (несохраненные данные)
+      const manualStatement = {
+        fileName: "Копия транзакции",
+        transactions: [copiedTransaction],
+        period: {
+          from: new Date(copiedTransaction.date),
+          to: new Date(copiedTransaction.date),
+        },
+        meta: {
+          source: "copy",
+          addedAt: new Date().toISOString(),
+        },
+      };
+
+      statements.value.push(manualStatement);
+
+      // Принудительно обновляем таблицу
+      tableKey.value++;
+
+      notify("Транзакция скопирована в несохраненные данные", "success");
+    }
+  } catch (error) {
+    console.error("Ошибка при копировании транзакции:", error);
+    notify("Ошибка при копировании транзакции", "error");
+  }
+}
+
 defineExpose({
   addStatement,
   addManualTransaction,
+  copyTransaction,
   loadStatementsFromDb,
   clearStatements,
   exportData,
@@ -738,6 +915,8 @@ defineExpose({
   getCategories: () => availableCategories.value,
   saveAllToDb,
   setDatabaseMode,
+  statements,
+  isDatabaseMode,
 });
 </script>
 
@@ -813,12 +992,35 @@ defineExpose({
       </select>
     </div>
     <div>
+      <label class="block text-xs mb-1">Месяц</label>
+      <select
+        v-model="selectedMonth"
+        @change="onMonthChange($event.target.value)"
+        class="border rounded px-2 py-1 h-8 min-w-32"
+      >
+        <option value="">Все месяцы</option>
+        <option v-for="month in availableMonths" :key="month.key" :value="month.key">
+          {{ month.label }}
+        </option>
+      </select>
+    </div>
+    <div>
       <label class="block text-xs mb-1">Дата с</label>
-      <input type="date" v-model="dateFrom" class="border rounded px-2 py-1 h-8" />
+      <input
+        type="date"
+        v-model="dateFrom"
+        @change="syncSelectedMonth"
+        class="border rounded px-2 py-1 h-8"
+      />
     </div>
     <div>
       <label class="block text-xs mb-1">Дата по</label>
-      <input type="date" v-model="dateTo" class="border rounded px-2 py-1 h-8" />
+      <input
+        type="date"
+        v-model="dateTo"
+        @change="syncSelectedMonth"
+        class="border rounded px-2 py-1 h-8"
+      />
     </div>
     <div>
       <label class="block text-xs mb-1">Поиск</label>
@@ -894,7 +1096,7 @@ defineExpose({
         <span v-if="sortField === 'category'">{{ sortDirection === "asc" ? "▲" : "▼" }}</span>
       </th>
       <th class="table-comment min-w-40 max-w-60">Комментарий</th>
-      <th class="whitespace-nowrap w-16">Действия</th>
+      <th class="whitespace-nowrap w-24">Действия</th>
     </template>
     <template #row="{ row }">
       <td class="w-8">
@@ -951,13 +1153,22 @@ defineExpose({
         {{ row.comment || "" }}
       </td>
       <td class="whitespace-nowrap">
-        <button
-          @click="showDeleteConfirmation(row)"
-          class="px-2 py-1 bg-red-300 text-white rounded hover:bg-red-500 transition-colors text-xs"
-          title="Удалить транзакцию"
-        >
-          🗑️
-        </button>
+        <div class="flex gap-1">
+          <button
+            @click="copyTransaction(row)"
+            class="px-2 py-1 bg-blue-300 text-white rounded hover:bg-blue-500 transition-colors text-xs"
+            title="Копировать транзакцию"
+          >
+            📋
+          </button>
+          <button
+            @click="showDeleteConfirmation(row)"
+            class="px-2 py-1 bg-red-300 text-white rounded hover:bg-red-500 transition-colors text-xs"
+            title="Удалить транзакцию"
+          >
+            🗑️
+          </button>
+        </div>
       </td>
     </template>
   </Table>

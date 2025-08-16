@@ -518,19 +518,20 @@ export function filterAndSortTransactions(transactions, filters = {}, sort = {})
 }
 
 /**
- * Удаляет дубликаты транзакций по дате, сумме, описанию и банку
+ * Удаляет дубликаты транзакций по дате, сумме, описанию, банку и категории
  * @param {Array} transactions - массив транзакций
  * @returns {Array} - массив без дубликатов
  */
 export function removeDuplicateTransactions(transactions) {
   const seen = new Set();
   return transactions.filter((t) => {
-    // Ключ: дата (ISO), сумма, описание (без пробелов), банк
+    // Ключ: дата (ISO), сумма, описание (без пробелов), банк, категория
     const key = [
       t.date instanceof Date ? t.date.toISOString().slice(0, 10) : t.date,
       t.amount,
       (t.description || "").replace(/\s+/g, "").toLowerCase(),
       t.bank,
+      t.category || "",
     ].join("|");
     if (seen.has(key)) return false;
     seen.add(key);

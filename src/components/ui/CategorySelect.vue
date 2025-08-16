@@ -1,8 +1,8 @@
 <template>
-  <div class="relative">
+  <div class="relative" ref="dropdownRef">
     <!-- Основной селект -->
     <div
-      @click="toggleDropdown"
+      @click="handleToggle"
       class="flex items-center justify-between w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg cursor-pointer hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
       :class="{ 'border-blue-500 ring-2 ring-blue-500': isOpen }"
     >
@@ -21,8 +21,8 @@
     <!-- Выпадающий список -->
     <div
       v-if="isOpen"
-      class="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto"
-      style="min-width: 280px; width: max-content"
+      class="absolute z-[9999] w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto"
+      style="min-width: 280px; width: max-content; top: 100%"
     >
       <!-- Поиск -->
       <div class="sticky top-0 bg-white border-b border-gray-200 p-2">
@@ -81,7 +81,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed } from "vue";
+import { useDropdown } from "../../composables/useDropdown.js";
 
 const props = defineProps({
   modelValue: {
@@ -96,7 +97,7 @@ const props = defineProps({
 
 const emit = defineEmits(["update:modelValue", "category-added"]);
 
-const isOpen = ref(false);
+const { isOpen, dropdownRef, toggle, close } = useDropdown();
 const searchQuery = ref("");
 const newCategory = ref("");
 
@@ -114,24 +115,20 @@ const filteredCategories = computed(() => {
   return categories;
 });
 
-// Переключение выпадающего списка
-function toggleDropdown() {
-  isOpen.value = !isOpen.value;
-  if (isOpen.value) {
-    searchQuery.value = "";
-    newCategory.value = "";
-  } else {
-    // При закрытии дропдауна очищаем все поля
-    searchQuery.value = "";
-    newCategory.value = "";
-  }
-}
-
 // Выбор категории
 function selectCategory(category) {
   emit("update:modelValue", category);
-  isOpen.value = false;
+  close();
   searchQuery.value = "";
+}
+
+// Очистка полей при открытии/закрытии
+function handleToggle() {
+  toggle();
+  if (isOpen.value) {
+    searchQuery.value = "";
+    newCategory.value = "";
+  }
 }
 
 // Добавление новой категории
@@ -140,22 +137,15 @@ function addNewCategory() {
   if (category && !props.categories.includes(category)) {
     emit("category-added", category);
     emit("update:modelValue", category);
-    isOpen.value = false;
+    close();
     newCategory.value = "";
     searchQuery.value = "";
   } else if (category && props.categories.includes(category)) {
     // Если категория уже существует, просто выбираем её
     emit("update:modelValue", category);
-    isOpen.value = false;
+    close();
     newCategory.value = "";
     searchQuery.value = "";
-  }
-}
-
-// Закрытие при клике вне компонента
-function handleClickOutside(event) {
-  if (!event.target.closest(".relative")) {
-    isOpen.value = false;
   }
 }
 
@@ -165,17 +155,4 @@ function handleCategoriesUpdate() {
   searchQuery.value = "";
   newCategory.value = "";
 }
-
-// Обработчики событий
-onMounted(() => {
-  document.addEventListener("click", handleClickOutside);
-  // Слушаем глобальные события обновления категорий
-  window.addEventListener("categories-updated", handleCategoriesUpdate);
-});
-
-onUnmounted(() => {
-  document.removeEventListener("click", handleClickOutside);
-  // Убираем слушатель глобальных событий
-  window.removeEventListener("categories-updated", handleCategoriesUpdate);
-});
 </script>

@@ -138,8 +138,10 @@ export async function checkDuplicateTransactions(newTransactions) {
         const descriptionMatch =
           (existing.description || "").replace(/\s+/g, "").toLowerCase() ===
           (newTransaction.description || "").replace(/\s+/g, "").toLowerCase();
+        const categoryMatch = (existing.category || "") === (newTransaction.category || "");
 
-        const isDuplicate = dateMatch && amountMatch && bankMatch && descriptionMatch;
+        const isDuplicate =
+          dateMatch && amountMatch && bankMatch && descriptionMatch && categoryMatch;
 
         return isDuplicate;
       });
@@ -443,6 +445,7 @@ export async function removeDuplicateTransactionsFromDb() {
         transaction.amount,
         (transaction.description || "").replace(/\s+/g, "").toLowerCase(),
         transaction.bank,
+        transaction.category || "",
       ].join("|");
 
       if (seen.has(key)) {
