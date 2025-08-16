@@ -8,21 +8,19 @@ import { ref, onMounted, computed } from "vue";
 
 const allTable = ref(null);
 const monthlyTable = ref(null);
-const currentMode = ref("upload"); // 'upload' или 'database'
+const currentMode = ref("upload");
 const showMonthlyTable = ref(false);
 const showAddTransactionModal = ref(false);
-const hasUnsavedData = ref(false); // Новое состояние для отслеживания несохраненных данных
-const showAutoSwitchNotification = ref(false); // Уведомление об автоматическом переключении
+const hasUnsavedData = ref(false);
+const showAutoSwitchNotification = ref(false);
 
 async function handleFileParsed(parsedStatement) {
   if (allTable.value && allTable.value.addStatement) {
     await allTable.value.addStatement(parsedStatement);
-    hasUnsavedData.value = true; // Помечаем, что есть несохраненные данные
+    hasUnsavedData.value = true;
 
-    // Показываем уведомление о успешной загрузке
     showAutoSwitchNotification.value = true;
 
-    // Скрываем уведомление через 5 секунд
     setTimeout(() => {
       showAutoSwitchNotification.value = false;
     }, 5000);
@@ -32,64 +30,51 @@ async function handleFileParsed(parsedStatement) {
 async function saveToDatabase() {
   if (allTable.value && allTable.value.saveAllToDb) {
     await allTable.value.saveAllToDb();
-    hasUnsavedData.value = false; // Данные сохранены
-    // Автоматически переключаемся в режим просмотра БД
+    hasUnsavedData.value = false;
     currentMode.value = "database";
-    // Обновляем категории в MonthlyTable
     await refreshCategoriesInMonthlyTable();
   }
 }
 
 function switchToUpload() {
   currentMode.value = "upload";
-  // Очищаем данные из базы при переключении в режим загрузки
   if (allTable.value && allTable.value.clearStatements) {
     allTable.value.clearStatements();
   }
-  // Устанавливаем режим загрузки в таблице
   if (allTable.value && allTable.value.setDatabaseMode) {
     allTable.value.setDatabaseMode(false);
   }
   hasUnsavedData.value = false;
-  showAutoSwitchNotification.value = false; // Скрываем уведомление
+  showAutoSwitchNotification.value = false;
 }
 
 function switchToDatabase() {
   currentMode.value = "database";
-  // Загружаем данные из базы при переключении
   if (allTable.value && allTable.value.loadStatementsFromDb) {
     allTable.value.loadStatementsFromDb();
   }
-  // Устанавливаем режим базы данных в таблице
   if (allTable.value && allTable.value.setDatabaseMode) {
     allTable.value.setDatabaseMode(true);
   }
-  // Обновляем категории в MonthlyTable
   refreshCategoriesInMonthlyTable();
   hasUnsavedData.value = false;
-  showAutoSwitchNotification.value = false; // Скрываем уведомление
+  showAutoSwitchNotification.value = false;
 }
 
-// Функция для обновления категорий в MonthlyTable
 async function refreshCategoriesInMonthlyTable() {
   if (monthlyTable.value && monthlyTable.value.refreshCategoriesFromDb) {
     await monthlyTable.value.refreshCategoriesFromDb();
   }
 }
 
-// Функция для обработки обновления категорий
 async function handleCategoriesUpdated() {
-  // Категории уже обновлены в AllTransactionsTable через глобальное событие
-  // Обновляем только категории в MonthlyTable
   await refreshCategoriesInMonthlyTable();
 }
 
-// Функция для добавления транзакции вручную
 async function handleAddTransaction(transaction) {
   if (allTable.value && allTable.value.addManualTransaction) {
     await allTable.value.addManualTransaction(transaction);
 
-    // Проверяем, есть ли несохраненные данные (только в режиме загрузки файлов)
     if (
       allTable.value.statements &&
       allTable.value.statements.length > 0 &&
@@ -479,6 +464,7 @@ function clearAllData() {
       <AddTransactionModal
         :is-open="showAddTransactionModal"
         :categories="allTable?.getCategories?.() || []"
+        :banks="allTable?.getBanks?.() || []"
         @close="showAddTransactionModal = false"
         @add-transaction="handleAddTransaction"
       />

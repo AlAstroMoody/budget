@@ -280,6 +280,19 @@ function setDefaultDates() {
   dateTo.value = today.toISOString().split("T")[0];
 }
 
+function resetFilters() {
+  selectedBank.value = "";
+  selectedCategory.value = "";
+  selectedMonth.value = "";
+  search.value = "";
+  setDefaultDates();
+
+  sortField.value = "date";
+  sortDirection.value = "desc";
+
+  notify("Фильтры сброшены", "info");
+}
+
 // Локальные фильтры и сортировка
 const selectedBank = ref("");
 const selectedCategory = ref("");
@@ -372,15 +385,19 @@ const allTransactions = computed(() => {
   return transactions;
 });
 
-// Функция для получения всех транзакций (для статистики)
 function getAllTransactions() {
   return allTransactions.value;
+}
+
+function getBanks() {
+  return banks.value || [];
 }
 
 // Получаем уникальные банки и категории для фильтров
 const banks = computed(() =>
   Array.from(new Set(allTransactions.value.map((t) => t.bank))).filter(Boolean)
 );
+
 const categories = computed(() =>
   Array.from(new Set(allTransactions.value.map((t) => t.category))).filter(Boolean)
 );
@@ -913,6 +930,7 @@ defineExpose({
   showClearAllConfirmation,
   getAllTransactions,
   getCategories: () => availableCategories.value,
+  getBanks,
   saveAllToDb,
   setDatabaseMode,
   statements,
@@ -1030,6 +1048,17 @@ defineExpose({
         placeholder="Описание, категория..."
         class="border rounded px-2 py-1 h-8"
       />
+    </div>
+
+    <div>
+      <label class="block text-xs mb-1">&nbsp;</label>
+      <button
+        @click="resetFilters"
+        class="px-3 py-1 h-8 bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors text-xs font-medium"
+        title="Сбросить все фильтры"
+      >
+        🔄 Сброс
+      </button>
     </div>
 
     <div class="ml-auto text-xs text-gray-500">Показано: {{ filtered.length }}</div>

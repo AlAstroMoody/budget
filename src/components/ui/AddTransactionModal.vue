@@ -20,6 +20,28 @@
         </div>
 
         <form @submit.prevent="handleSubmit" class="space-y-4">
+          <!-- Категория -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Категория</label>
+            <CategorySelect
+              v-model="form.category"
+              :categories="categories"
+              placeholder="Выберите категорию"
+            />
+          </div>
+
+          <!-- Банк -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Банк</label>
+            <UniversalSelect
+              v-model="form.bank"
+              :items="availableBanks"
+              placeholder="Выберите банк"
+              item-name="банк"
+              :allow-add-new="true"
+            />
+          </div>
+
           <!-- Дата -->
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1"
@@ -47,16 +69,6 @@
             />
           </div>
 
-          <!-- Категория -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Категория</label>
-            <CategorySelect
-              v-model="form.category"
-              :categories="categories"
-              placeholder="Выберите категорию"
-            />
-          </div>
-
           <!-- Сумма -->
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1"
@@ -73,22 +85,6 @@
             <p class="text-xs text-gray-500 mt-1">
               Положительная сумма = доход, отрицательная = расход
             </p>
-          </div>
-
-          <!-- Банк -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Банк</label>
-            <select
-              v-model="form.bank"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">Выберите банк</option>
-              <option value="Сбербанк">Сбербанк</option>
-              <option value="Тинькофф">Тинькофф</option>
-              <option value="Озон-банк">Озон-банк</option>
-              <option value="Альфа-банк">Альфа-банк</option>
-              <option value="Наличные">Наличные</option>
-            </select>
           </div>
 
           <!-- Кнопки -->
@@ -127,6 +123,7 @@
 <script setup>
 import { ref, computed, watch } from "vue";
 import CategorySelect from "./CategorySelect.vue";
+import UniversalSelect from "./UniversalSelect.vue";
 
 const props = defineProps({
   isOpen: {
@@ -134,6 +131,10 @@ const props = defineProps({
     default: false,
   },
   categories: {
+    type: Array,
+    default: () => [],
+  },
+  banks: {
     type: Array,
     default: () => [],
   },
@@ -146,10 +147,19 @@ const form = ref({
   description: "",
   amount: "",
   category: "",
-  bank: "Наличные",
+  bank: "",
 });
 
-// Валидация формы
+const availableBanks = computed(() => {
+  const existingBanks = props.banks || [];
+
+  if (existingBanks.length === 0) {
+    return ["Наличные"];
+  }
+
+  return existingBanks.sort();
+});
+
 const isFormValid = computed(() => {
   const hasDate = !!form.value.date;
   const hasDescription = !!form.value.description.trim();
@@ -158,18 +168,18 @@ const isFormValid = computed(() => {
   return hasDate && hasDescription && hasAmount;
 });
 
-// Сброс формы при открытии
 watch(
   () => props.isOpen,
   (newValue) => {
     if (newValue) {
-      // Устанавливаем текущую дату по умолчанию
       const today = new Date();
       form.value.date = today.toISOString().split("T")[0];
       form.value.description = "";
       form.value.amount = "";
       form.value.category = "";
-      form.value.bank = "Наличные";
+
+      const availableBanksList = availableBanks.value;
+      form.value.bank = availableBanksList.length > 0 ? availableBanksList[0] : "";
     }
   }
 );
@@ -182,8 +192,8 @@ function handleSubmit() {
     description: form.value.description.trim(),
     amount: parseFloat(form.value.amount),
     category: form.value.category || "Прочее",
-    bank: form.value.bank,
-    raw: `Наличные: ${form.value.description}`,
+    bank: form.value.bank || "Наличные",
+    raw: `${form.value.bank || "Наличные"}: ${form.value.description}`,
     meta: {
       source: "manual",
       addedAt: new Date().toISOString(),
