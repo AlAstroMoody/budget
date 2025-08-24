@@ -87,6 +87,17 @@
             </p>
           </div>
 
+          <!-- Комментарий -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Комментарий</label>
+            <textarea
+              v-model="form.comment"
+              placeholder="Дополнительная информация о транзакции (необязательно)"
+              rows="3"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+            ></textarea>
+          </div>
+
           <!-- Кнопки -->
           <div class="flex space-x-3 pt-4">
             <button
@@ -148,6 +159,7 @@ const form = ref({
   amount: "",
   category: "",
   bank: "",
+  comment: "",
 });
 
 const availableBanks = computed(() => {
@@ -177,6 +189,7 @@ watch(
       form.value.description = "";
       form.value.amount = "";
       form.value.category = "";
+      form.value.comment = "";
 
       const availableBanksList = availableBanks.value;
       form.value.bank = availableBanksList.length > 0 ? availableBanksList[0] : "";
@@ -193,6 +206,7 @@ function handleSubmit() {
     amount: parseFloat(form.value.amount),
     category: form.value.category || "Прочее",
     bank: form.value.bank || "Наличные",
+    comment: form.value.comment.trim() || "",
     raw: `${form.value.bank || "Наличные"}: ${form.value.description}`,
     meta: {
       source: "manual",

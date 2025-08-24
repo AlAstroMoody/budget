@@ -3,6 +3,7 @@
 import { ref, computed, nextTick, watch } from "vue";
 import Table from "./ui/Table.vue";
 import CategorySelect from "./ui/CategorySelect.vue";
+import UniversalSelect from "./ui/UniversalSelect.vue";
 import {
   aggregateTransactions,
   filterAndSortTransactions,
@@ -410,7 +411,6 @@ const availableCategories = computed(() => {
     "Кофе",
     "Товары для дома",
     "Кафе и рестораны",
-    "Вода",
     "Коты",
     "Кварт.плата",
     "Интернет и телефон",
@@ -419,6 +419,7 @@ const availableCategories = computed(() => {
     "Фитнес",
     "Развлечения",
     "Хобби",
+    "Творчество",
     "Техника",
     "Одежда",
     "Обувь",
@@ -434,7 +435,8 @@ const availableCategories = computed(() => {
     "Недвижимость",
     "Мебель",
     "Ремонт",
-    "Экстра траты ЗП Ви",
+    "Экстра траты",
+    "ЗП Ви",
     "ЗП Лё",
     "Прочие доходы Ви",
     "Прочие доходы Лё",
@@ -482,6 +484,12 @@ async function onCategoryAdded(newCategory) {
     console.error("Ошибка при сохранении категории в БД:", error);
     notify("Ошибка при сохранении категории", "error");
   }
+}
+
+// Обработчик добавления нового банка
+function onBankAdded(newBank) {
+  // Обновляем список банков (он автоматически обновится через computed свойство banks)
+  notify(`Добавлен новый банк: ${newBank}`, "success");
 }
 
 // Функции для работы с датами
@@ -721,8 +729,17 @@ async function onEdit(row, field, value) {
   if (field === "amount") {
     const num = parseFloat(value.replace(/[^\d\-.,]/g, "").replace(",", "."));
     row.amount = isNaN(num) ? 0 : num;
+  } else if (field === "date") {
+    // Для даты преобразуем строку в Date объект
+    const dateValue = new Date(value);
+    if (!isNaN(dateValue.getTime())) {
+      row.date = dateValue;
+    } else {
+      notify("Неверный формат даты", "error");
+      return;
+    }
   } else {
-    // Для других полей (включая category) обновляем значение
+    // Для других полей (включая category и bank) обновляем значение
     row[field] = value;
   }
 
@@ -1137,9 +1154,31 @@ defineExpose({
         />
       </td>
       <td class="whitespace-nowrap">
-        {{ row.date ? parseDate(row.date)?.toLocaleDateString() : "" }}
+        <input
+          type="date"
+          :value="
+            row.date
+              ? row.date instanceof Date
+                ? row.date.toISOString().split('T')[0]
+                : new Date(row.date).toISOString().split('T')[0]
+              : ''
+          "
+          @change="onEdit(row, 'date', $event.target.value)"
+          class="border-none bg-transparent text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 rounded px-1"
+          style="min-width: 120px"
+        />
       </td>
-      <td class="whitespace-nowrap px-4">{{ row.bank }}</td>
+      <td class="whitespace-nowrap px-4">
+        <UniversalSelect
+          v-model="row.bank"
+          :items="banks"
+          placeholder="Выберите банк"
+          item-name="банк"
+          :allow-add-new="true"
+          @update:modelValue="(value) => onEdit(row, 'bank', value)"
+          @item-added="(newBank) => onBankAdded(newBank)"
+        />
+      </td>
       <td
         class="table-description"
         contenteditable
