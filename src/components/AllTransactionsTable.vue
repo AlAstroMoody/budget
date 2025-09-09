@@ -4,6 +4,7 @@ import { ref, computed, nextTick, watch } from "vue";
 import Table from "./ui/Table.vue";
 import CategorySelect from "./ui/CategorySelect.vue";
 import UniversalSelect from "./ui/UniversalSelect.vue";
+import DateEditor from "./ui/DateEditor.vue";
 import {
   aggregateTransactions,
   filterAndSortTransactions,
@@ -41,6 +42,10 @@ const userCategories = ref([]);
 
 // Ключ для принудительного обновления таблицы
 const tableKey = ref(0);
+
+// Флаг для отслеживания редактирования (чтобы не применять сортировку)
+const isEditing = ref(false);
+const editingTimeout = ref(null);
 
 // Состояние для модальных окон
 const showDeleteModal = ref(false);
@@ -284,6 +289,7 @@ function setDefaultDates() {
 function resetFilters() {
   selectedBank.value = "";
   selectedCategory.value = "";
+  selectedYear.value = "";
   selectedMonth.value = "";
   search.value = "";
   setDefaultDates();
@@ -299,6 +305,7 @@ const selectedBank = ref("");
 const selectedCategory = ref("");
 const dateFrom = ref("");
 const dateTo = ref("");
+const selectedYear = ref("");
 const selectedMonth = ref("");
 const search = ref("");
 const sortField = ref("date");
@@ -307,50 +314,130 @@ const sortDirection = ref("desc");
 // Устанавливаем даты по умолчанию при инициализации
 setDefaultDates();
 
+// Генерируем список годов для селекта на основе данных транзакций
+const availableYears = computed(() => {
+  const years = new Set();
+
+  // Добавляем годы из транзакций
+  allTransactions.value.forEach((transaction) => {
+    if (transaction.date) {
+      const date = parseDate(transaction.date);
+      if (date) {
+        years.add(date.getFullYear());
+      }
+    }
+  });
+
+  // Добавляем текущий год, если его нет в данных
+  const currentYear = new Date().getFullYear();
+  years.add(currentYear);
+
+  // Добавляем предыдущий и следующий год для удобства
+  years.add(currentYear - 1);
+  years.add(currentYear + 1);
+
+  return Array.from(years).sort((a, b) => b - a);
+});
+
 // Генерируем список месяцев для селекта
 const availableMonths = computed(() => {
   const months = [];
-  const today = new Date();
-  const currentYear = today.getFullYear();
+  const monthLabels = {
+    1: "Январь",
+    2: "Февраль",
+    3: "Март",
+    4: "Апрель",
+    5: "Май",
+    6: "Июнь",
+    7: "Июль",
+    8: "Август",
+    9: "Сентябрь",
+    10: "Октябрь",
+    11: "Ноябрь",
+    12: "Декабрь",
+  };
 
-  // Добавляем месяцы за последние 2 года и следующие 6 месяцев
-  for (let year = currentYear - 2; year <= currentYear + 1; year++) {
-    for (let month = 0; month < 12; month++) {
-      const date = new Date(year, month, 1);
-      const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
-      const monthLabel = date.toLocaleDateString("ru-RU", {
-        year: "numeric",
-        month: "long",
-      });
-      months.push({ key: monthKey, label: monthLabel, date });
-    }
+  for (let month = 1; month <= 12; month++) {
+    months.push({
+      value: month,
+      label: monthLabels[month],
+    });
   }
 
-  // Сортируем по дате (новые сначала)
-  return months.sort((a, b) => b.date - a.date);
+  return months;
 });
 
-// Обработчик изменения выбранного месяца
-function onMonthChange(monthKey) {
-  if (!monthKey) {
+// Обработчик изменения года
+function onYearChange() {
+  updateDateRange();
+}
+
+// Обработчик изменения месяца
+function onMonthChange() {
+  updateDateRange();
+}
+
+// Обновление диапазона дат на основе выбранного года и месяца
+function updateDateRange() {
+  if (!selectedYear.value && !selectedMonth.value) {
     // Сброс фильтра по месяцу
     setDefaultDates();
-    selectedMonth.value = "";
     return;
   }
 
-  const [year, month] = monthKey.split("-").map(Number);
-  const startOfMonth = new Date(year, month - 1, 1);
-  const endOfMonth = new Date(year, month, 0); // Последний день месяца
+  if (selectedYear.value && selectedMonth.value) {
+    // Выбран конкретный месяц
+    const year = parseInt(selectedYear.value);
+    const month = parseInt(selectedMonth.value);
+    const endOfMonth = new Date(year, month, 0); // Последний день месяца
 
-  dateFrom.value = startOfMonth.toISOString().split("T")[0];
-  dateTo.value = endOfMonth.toISOString().split("T")[0];
-  selectedMonth.value = monthKey;
+    // Используем локальное время для избежания проблем с часовыми поясами
+    dateFrom.value = `${year}-${String(month).padStart(2, "0")}-01`;
+    dateTo.value = `${year}-${String(month).padStart(2, "0")}-${String(
+      endOfMonth.getDate()
+    ).padStart(2, "0")}`;
+  } else if (selectedYear.value) {
+    // Выбран только год
+    const year = parseInt(selectedYear.value);
+    // Используем локальное время для избежания проблем с часовыми поясами
+    dateFrom.value = `${year}-01-01`;
+    dateTo.value = `${year}-12-31`;
+  } else if (selectedMonth.value) {
+    // Выбран только месяц - используем год из данных транзакций или текущий год
+    const month = parseInt(selectedMonth.value);
+
+    // Находим год из данных транзакций, который содержит этот месяц
+    const yearsFromTransactions = new Set();
+    allTransactions.value.forEach((transaction) => {
+      if (transaction.date) {
+        const date = parseDate(transaction.date);
+        if (date) {
+          yearsFromTransactions.add(date.getFullYear());
+        }
+      }
+    });
+
+    // Используем самый последний год из транзакций, или текущий год
+    const availableYears = Array.from(yearsFromTransactions).sort((a, b) => b - a);
+    const yearToUse = availableYears.length > 0 ? availableYears[0] : new Date().getFullYear();
+
+    const endOfMonth = new Date(yearToUse, month, 0);
+
+    // Используем локальное время для избежания проблем с часовыми поясами
+    dateFrom.value = `${yearToUse}-${String(month).padStart(2, "0")}-01`;
+    dateTo.value = `${yearToUse}-${String(month).padStart(2, "0")}-${String(
+      endOfMonth.getDate()
+    ).padStart(2, "0")}`;
+
+    // Автоматически устанавливаем год в селекте
+    selectedYear.value = yearToUse.toString();
+  }
 }
 
-// Синхронизация выбранного месяца с полями дат
+// Синхронизация выбранного года и месяца с полями дат
 function syncSelectedMonth() {
   if (!dateFrom.value || !dateTo.value) {
+    selectedYear.value = "";
     selectedMonth.value = "";
     return;
   }
@@ -363,13 +450,23 @@ function syncSelectedMonth() {
   const toMonth = new Date(toDate.getFullYear(), toDate.getMonth() + 1, 0);
 
   if (fromDate.getTime() === fromMonth.getTime() && toDate.getTime() === toMonth.getTime()) {
-    const monthKey = `${fromDate.getFullYear()}-${String(fromDate.getMonth() + 1).padStart(
-      2,
-      "0"
-    )}`;
-    selectedMonth.value = monthKey;
+    // Это целый месяц
+    selectedYear.value = fromDate.getFullYear().toString();
+    selectedMonth.value = (fromDate.getMonth() + 1).toString();
   } else {
-    selectedMonth.value = "";
+    // Проверяем, соответствует ли диапазон целому году
+    const fromYear = new Date(fromDate.getFullYear(), 0, 1);
+    const toYear = new Date(toDate.getFullYear(), 11, 31);
+
+    if (fromDate.getTime() === fromYear.getTime() && toDate.getTime() === toYear.getTime()) {
+      // Это целый год
+      selectedYear.value = fromDate.getFullYear().toString();
+      selectedMonth.value = "";
+    } else {
+      // Это произвольный диапазон
+      selectedYear.value = "";
+      selectedMonth.value = "";
+    }
   }
 }
 
@@ -492,6 +589,28 @@ function onBankAdded(newBank) {
   notify(`Добавлен новый банк: ${newBank}`, "success");
 }
 
+// Функции для управления состоянием редактирования
+function startEditing() {
+  isEditing.value = true;
+  // Очищаем предыдущий таймаут
+  if (editingTimeout.value) {
+    clearTimeout(editingTimeout.value);
+  }
+}
+
+function endEditing() {
+  // Устанавливаем таймаут для завершения редактирования
+  editingTimeout.value = setTimeout(() => {
+    isEditing.value = false;
+    editingTimeout.value = null;
+  }, 500); // 500мс задержка после последнего изменения
+}
+
+// Функция для обновления даты
+function onDateUpdate(row, newDateValue) {
+  onEdit(row, "date", newDateValue, true);
+}
+
 // Функции для работы с датами
 function parseDate(dateInput) {
   // Если это уже Date объект, возвращаем как есть
@@ -526,7 +645,10 @@ const filtered = computed(() => {
       dateTo: dateTo.value ? parseDate(dateTo.value) : undefined,
       search: search.value || undefined,
     },
-    { field: sortField.value, direction: sortDirection.value }
+    // Не применяем сортировку во время редактирования
+    isEditing.value
+      ? { field: "date", direction: "desc" }
+      : { field: sortField.value, direction: sortDirection.value }
   );
 
   return arr;
@@ -724,7 +846,7 @@ function cancelClearAll() {
   showClearAllModal.value = false;
 }
 
-async function onEdit(row, field, value) {
+async function onEdit(row, field, value, shouldEndEditing = true) {
   // Преобразуем amount к числу, если редактируется сумма
   if (field === "amount") {
     const num = parseFloat(value.replace(/[^\d\-.,]/g, "").replace(",", "."));
@@ -768,9 +890,13 @@ async function onEdit(row, field, value) {
 
       notify(`Поле "${field}" обновлено`, "success");
     } catch (error) {
-      console.error("Ошибка при сохранении изменений:", error);
-      notify("Ошибка при сохранении изменений", "error");
+      notify("Ошибка при сохранении изменений", error);
     }
+  }
+
+  // Завершаем редактирование только если это нужно
+  if (shouldEndEditing) {
+    endEditing();
   }
 }
 
@@ -1027,14 +1153,27 @@ defineExpose({
       </select>
     </div>
     <div>
+      <label class="block text-xs mb-1">Год</label>
+      <select
+        v-model="selectedYear"
+        @change="onYearChange"
+        class="border rounded px-2 py-1 h-8 min-w-20"
+      >
+        <option value="">Все годы</option>
+        <option v-for="year in availableYears" :key="year" :value="year">
+          {{ year }}
+        </option>
+      </select>
+    </div>
+    <div>
       <label class="block text-xs mb-1">Месяц</label>
       <select
         v-model="selectedMonth"
-        @change="onMonthChange($event.target.value)"
-        class="border rounded px-2 py-1 h-8 min-w-32"
+        @change="onMonthChange"
+        class="border rounded px-2 py-1 h-8 min-w-24"
       >
         <option value="">Все месяцы</option>
-        <option v-for="month in availableMonths" :key="month.key" :value="month.key">
+        <option v-for="month in availableMonths" :key="month.value" :value="month.value">
           {{ month.label }}
         </option>
       </select>
@@ -1062,7 +1201,7 @@ defineExpose({
       <input
         type="text"
         v-model="search"
-        placeholder="Описание, категория..."
+        placeholder="Описание, категория, комментарий..."
         class="border rounded px-2 py-1 h-8"
       />
     </div>
@@ -1154,19 +1293,7 @@ defineExpose({
         />
       </td>
       <td class="whitespace-nowrap">
-        <input
-          type="date"
-          :value="
-            row.date
-              ? row.date instanceof Date
-                ? row.date.toISOString().split('T')[0]
-                : new Date(row.date).toISOString().split('T')[0]
-              : ''
-          "
-          @change="onEdit(row, 'date', $event.target.value)"
-          class="border-none bg-transparent text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 rounded px-1"
-          style="min-width: 120px"
-        />
+        <DateEditor :value="row.date" @update:value="(newDate) => onDateUpdate(row, newDate)" />
       </td>
       <td class="whitespace-nowrap px-4">
         <UniversalSelect
@@ -1175,22 +1302,28 @@ defineExpose({
           placeholder="Выберите банк"
           item-name="банк"
           :allow-add-new="true"
-          @update:modelValue="(value) => onEdit(row, 'bank', value)"
+          @update:modelValue="(value) => onEdit(row, 'bank', value, true)"
           @item-added="(newBank) => onBankAdded(newBank)"
+          @focus="startEditing"
+          @blur="endEditing"
         />
       </td>
       <td
         class="table-description"
         contenteditable
         :title="row.description"
-        @blur="onEdit(row, 'description', $event.target.innerText)"
+        @focus="startEditing"
+        @blur="onEdit(row, 'description', $event.target.innerText, true)"
+        @keydown.enter.prevent="$event.target.blur()"
       >
         {{ row.description }}
       </td>
       <td
         :class="row.amount > 0 ? 'text-green-600' : 'text-red-600'"
         contenteditable
-        @blur="onEdit(row, 'amount', $event.target.innerText)"
+        @focus="startEditing"
+        @blur="onEdit(row, 'amount', $event.target.innerText, true)"
+        @keydown.enter.prevent="$event.target.blur()"
       >
         {{ row.amount > 0 ? "+" : ""
         }}{{
@@ -1209,14 +1342,18 @@ defineExpose({
             row.category
           }-${tableKey}`"
           @category-added="onCategoryAdded"
-          @update:modelValue="(value) => onEdit(row, 'category', value)"
+          @update:modelValue="(value) => onEdit(row, 'category', value, true)"
+          @focus="startEditing"
+          @blur="endEditing"
         />
       </td>
       <td
         class="table-comment"
         contenteditable
         :title="row.comment || ''"
-        @blur="onEdit(row, 'comment', $event.target.innerText)"
+        @focus="startEditing"
+        @blur="onEdit(row, 'comment', $event.target.innerText, true)"
+        @keydown.enter.prevent="$event.target.blur()"
       >
         {{ row.comment || "" }}
       </td>

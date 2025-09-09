@@ -489,7 +489,8 @@ export function filterAndSortTransactions(transactions, filters = {}, sort = {})
       (t) =>
         (t.description && t.description.toLowerCase().includes(q)) ||
         (t.category && t.category.toLowerCase().includes(q)) ||
-        (t.bank && t.bank.toLowerCase().includes(q))
+        (t.bank && t.bank.toLowerCase().includes(q)) ||
+        (t.comment && t.comment.toLowerCase().includes(q))
     );
   }
 

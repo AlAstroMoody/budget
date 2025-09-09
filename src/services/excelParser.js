@@ -216,7 +216,8 @@ export class ExcelParser {
       const cell = row.getCell(columnIndex);
 
       if (cell.value !== null && cell.value !== undefined) {
-        transaction[field] = this.parseCellValue(cell, field);
+        const parsedValue = this.parseCellValue(cell, field);
+        transaction[field] = parsedValue;
       }
     }
 
@@ -225,6 +226,14 @@ export class ExcelParser {
       transaction.amount = transaction.income || -transaction.expense;
       delete transaction.income;
       delete transaction.expense;
+    }
+
+    // Специальная обработка для Альфа-банка: извлекаем дату из описания
+    if (transaction.description && transaction.date) {
+      const dateFromDescription = this.extractDateFromDescription(transaction.description);
+      if (dateFromDescription) {
+        transaction.date = dateFromDescription;
+      }
     }
 
     return transaction;
@@ -252,6 +261,21 @@ export class ExcelParser {
       default:
         return value;
     }
+  }
+
+  /**
+   * Извлекает дату из описания операции (для Альфа-банка)
+   */
+  extractDateFromDescription(description) {
+    // Ищем паттерн "дата создания транзакции: DD-MM-YYYY"
+    const dateMatch = description.match(/дата создания транзакции:\s*(\d{2})-(\d{2})-(\d{4})/);
+    if (dateMatch) {
+      const [, day, month, year] = dateMatch;
+      // Создаем дату в UTC, чтобы избежать проблем с часовыми поясами
+      const date = new Date(Date.UTC(parseInt(year), parseInt(month) - 1, parseInt(day)));
+      return date;
+    }
+    return null;
   }
 
   /**

@@ -54,38 +54,10 @@
                   v-for="month in months"
                   :key="month.key"
                   class="border px-3 py-2 text-center font-semibold text-gray-700"
-                  colspan="2"
                 >
                   {{ month.label }}
                 </th>
-                <th class="border px-3 py-2 text-center font-semibold text-gray-700" colspan="2">
-                  Итого
-                </th>
-              </tr>
-              <tr class="bg-gray-50">
-                <th class="border px-3 py-2 text-left font-semibold text-gray-700"></th>
-                <template v-for="month in months" :key="month.key">
-                  <th
-                    class="border px-2 py-1 text-center text-xs font-medium bg-green-100 text-green-800"
-                  >
-                    +
-                  </th>
-                  <th
-                    class="border px-2 py-1 text-center text-xs font-medium bg-red-100 text-red-800"
-                  >
-                    -
-                  </th>
-                </template>
-                <th
-                  class="border px-2 py-1 text-center text-xs font-medium bg-green-100 text-green-800"
-                >
-                  +
-                </th>
-                <th
-                  class="border px-2 py-1 text-center text-xs font-medium bg-red-100 text-red-800"
-                >
-                  -
-                </th>
+                <th class="border px-3 py-2 text-center font-semibold text-gray-700">Итого</th>
               </tr>
             </thead>
             <tbody>
@@ -96,42 +68,25 @@
                 <template v-for="month in months" :key="month.key">
                   <td
                     class="border px-2 py-2 text-right"
-                    :class="getCellClass(monthlyData[month.key]?.[category]?.income || 0, 'income')"
+                    :class="getCellClass(getCategoryMonthTotal(month.key, category))"
                   >
-                    {{ formatAmount(monthlyData[month.key]?.[category]?.income || 0) }}
-                  </td>
-                  <td
-                    class="border px-2 py-2 text-right"
-                    :class="
-                      getCellClass(monthlyData[month.key]?.[category]?.expense || 0, 'expense')
-                    "
-                  >
-                    {{ formatAmount(monthlyData[month.key]?.[category]?.expense || 0) }}
+                    {{ formatAmount(getCategoryMonthTotal(month.key, category)) }}
                   </td>
                 </template>
-                <td class="border px-2 py-2 text-right font-semibold bg-green-100 text-gray-900">
-                  {{ formatAmount(getCategoryIncomeTotal(category)) }}
-                </td>
-                <td class="border px-2 py-2 text-right font-semibold bg-red-100 text-gray-900">
-                  {{ formatAmount(getCategoryExpenseTotal(category)) }}
+                <td class="border px-2 py-2 text-right font-semibold bg-gray-100 text-gray-900">
+                  {{ formatAmount(getCategoryTotal(category)) }}
                 </td>
               </tr>
               <!-- Строка итогов -->
               <tr class="bg-gray-100 font-bold">
                 <td class="border px-3 py-2 text-gray-900">ИТОГО</td>
                 <template v-for="month in months" :key="month.key">
-                  <td class="border px-2 py-2 text-right bg-green-200 text-gray-900">
-                    {{ formatAmount(getMonthIncomeTotal(month.key)) }}
-                  </td>
-                  <td class="border px-2 py-2 text-right bg-red-200 text-gray-900">
-                    {{ formatAmount(getMonthExpenseTotal(month.key)) }}
+                  <td class="border px-2 py-2 text-right bg-gray-200 text-gray-900">
+                    {{ formatAmount(getMonthTotal(month.key)) }}
                   </td>
                 </template>
-                <td class="border px-2 py-2 text-right bg-green-300 text-gray-900">
-                  {{ formatAmount(getGrandIncomeTotal()) }}
-                </td>
-                <td class="border px-2 py-2 text-right bg-red-300 text-gray-900">
-                  {{ formatAmount(getGrandExpenseTotal()) }}
+                <td class="border px-2 py-2 text-right bg-gray-300 text-gray-900">
+                  {{ formatAmount(getGrandTotal()) }}
                 </td>
               </tr>
             </tbody>
@@ -371,6 +326,32 @@ function getGrandExpenseTotal() {
   }, 0);
 }
 
+// Новые функции для вычисления общих сумм (доходы - расходы)
+function getCategoryMonthTotal(monthKey, category) {
+  const monthData = monthlyData.value[monthKey] || {};
+  const categoryData = monthData[category] || { income: 0, expense: 0 };
+  return categoryData.income - categoryData.expense;
+}
+
+function getCategoryTotal(category) {
+  return Object.keys(monthlyData.value).reduce((total, monthKey) => {
+    return total + getCategoryMonthTotal(monthKey, category);
+  }, 0);
+}
+
+function getMonthTotal(monthKey) {
+  const monthData = monthlyData.value[monthKey] || {};
+  return Object.values(monthData).reduce((total, categoryData) => {
+    return total + (categoryData.income - categoryData.expense);
+  }, 0);
+}
+
+function getGrandTotal() {
+  return Object.keys(monthlyData.value).reduce((total, monthKey) => {
+    return total + getMonthTotal(monthKey);
+  }, 0);
+}
+
 // Вспомогательные функции
 function parseDate(dateInput) {
   // Если это уже Date объект, возвращаем как есть
@@ -397,35 +378,31 @@ function parseDate(dateInput) {
 
 function formatAmount(amount) {
   if (amount === 0) return "0";
-  return amount.toLocaleString("ru-RU", {
+  const formatted = amount.toLocaleString("ru-RU", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   });
+  return amount > 0 ? `+${formatted}` : formatted;
 }
 
-function getCellClass(amount, type = "income") {
+function getCellClass(amount) {
   if (amount === 0) return "";
 
-  const stats = type === "income" ? incomeStats.value : expenseStats.value;
-
-  if (stats.max === 0) return "";
-
-  // Вычисляем процент от максимального значения
-  const percentage = amount / stats.max;
-
-  if (type === "income") {
-    // Для доходов: от светло-зелёного до тёмно-зелёного
-    if (percentage >= 0.8) return "bg-green-600 text-white font-semibold";
-    if (percentage >= 0.6) return "bg-green-500 text-white";
-    if (percentage >= 0.4) return "bg-green-400 text-white";
-    if (percentage >= 0.2) return "bg-green-300 text-gray-800";
+  if (amount > 0) {
+    // Для положительных сумм: зелёные оттенки
+    const absAmount = Math.abs(amount);
+    if (absAmount >= 100000) return "bg-green-600 text-white font-semibold";
+    if (absAmount >= 50000) return "bg-green-500 text-white";
+    if (absAmount >= 20000) return "bg-green-400 text-white";
+    if (absAmount >= 10000) return "bg-green-300 text-gray-800";
     return "bg-green-100 text-gray-800";
   } else {
-    // Для расходов: от светло-красного до тёмно-красного
-    if (percentage >= 0.8) return "bg-red-600 text-white font-semibold";
-    if (percentage >= 0.6) return "bg-red-500 text-white";
-    if (percentage >= 0.4) return "bg-red-400 text-white";
-    if (percentage >= 0.2) return "bg-red-300 text-gray-800";
+    // Для отрицательных сумм: красные оттенки
+    const absAmount = Math.abs(amount);
+    if (absAmount >= 100000) return "bg-red-600 text-white font-semibold";
+    if (absAmount >= 50000) return "bg-red-500 text-white";
+    if (absAmount >= 20000) return "bg-red-400 text-white";
+    if (absAmount >= 10000) return "bg-red-300 text-gray-800";
     return "bg-red-100 text-gray-800";
   }
 }
