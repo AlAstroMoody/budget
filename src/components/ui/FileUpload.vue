@@ -11,6 +11,10 @@ const props = defineProps({
     type: Number,
     default: 10 * 1024 * 1024, // 10MB
   },
+  selectedBank: {
+    type: String,
+    default: null,
+  },
 });
 
 const emit = defineEmits(["file-parsed", "error"]);
@@ -92,8 +96,8 @@ const processFiles = async (files) => {
           throw new Error(`Файл ${file.name}: поддерживаются только файлы: ${extensions}`);
         }
 
-        // Парсим файл
-        const result = await fileParser.parseFile(file);
+        // Парсим файл с указанным банком
+        const result = await fileParser.parseFile(file, props.selectedBank);
         results.push(result);
       } catch (err) {
         console.error(`❌ Ошибка в обработке файла ${file.name}:`, err);
@@ -189,12 +193,16 @@ const reset = () => {
         <div>
           <h3 class="text-base font-medium text-gray-900 mb-2">Загрузите банковскую выписку</h3>
           <p class="text-sm text-gray-600 mb-3">
-            Перетащите файлы сюда или нажмите для выбора (можно выбрать несколько)
+            <span v-if="selectedBank">
+              Выбран банк: <strong>{{ selectedBank }}</strong>
+            </span>
+            <span v-else class="text-red-600"> ⚠️ Сначала выберите банк выше </span>
           </p>
           <input
             type="file"
             :accept="accept"
             multiple
+            :disabled="!selectedBank"
             class="hidden"
             @change="handleFileSelect"
             id="file-upload"
@@ -203,9 +211,14 @@ const reset = () => {
           />
           <label
             for="file-upload"
-            class="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors cursor-pointer font-medium text-sm shadow-md"
+            :class="[
+              'inline-flex items-center px-4 py-2 rounded-lg transition-colors font-medium text-sm shadow-md',
+              selectedBank
+                ? 'bg-blue-600 text-white hover:bg-blue-700 cursor-pointer'
+                : 'bg-gray-300 text-gray-500 cursor-not-allowed',
+            ]"
           >
-            📁 Выбрать файлы
+            📁 {{ selectedBank ? "Выбрать файлы" : "Сначала выберите банк" }}
           </label>
         </div>
         <p class="text-xs text-gray-500">

@@ -64,10 +64,8 @@ export class FileParser {
   /**
    * Парсит файл, автоматически определяя его тип
    */
-  async parseFile(file) {
+  async parseFile(file, selectedBank = null) {
     try {
-      console.log("🔍 Определение типа файла:", file.name);
-
       const fileType = this.detectFileType(file);
 
       // Динамически загружаем парсер
@@ -75,9 +73,9 @@ export class FileParser {
 
       // Вызываем соответствующий метод парсера
       if (fileType === "excel") {
-        return await parser.parseExcelFile(file);
+        return await parser.parseExcelFile(file, selectedBank);
       } else if (fileType === "pdf") {
-        return await parser.parsePdfFile(file);
+        return await parser.parsePdfFile(file, selectedBank);
       }
     } catch (error) {
       console.error("Ошибка при парсинге файла:", error);

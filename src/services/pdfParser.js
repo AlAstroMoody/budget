@@ -25,49 +25,9 @@ export class PdfParser {
   }
 
   /**
-   * Определяет формат банка по содержимому PDF
-   */
-  detectBankFormat(text) {
-    const lower = text.toLowerCase();
-
-    // Проверяем признаки Альфа-Банка ПЕРВЫМИ (более специфичные)
-    if (
-      lower.includes("альфа-банк") ||
-      lower.includes("alfa-bank") ||
-      lower.includes("alfabank") ||
-      lower.includes("альфа банк") ||
-      lower.includes("пао альфа-банк") ||
-      lower.includes("ао альфа-банк") ||
-      text.includes("АЛЬФА-БАНК") ||
-      text.includes("АЛЬФА БАНК") ||
-      text.includes("АО «АЛЬФА-БАНК»") ||
-      text.includes("ПАО «АЛЬФА-БАНК»")
-    ) {
-      return { bankKey: "alfabank", bankName: "Альфа-Банк" };
-    }
-
-    // Проверяем признаки Сбербанка
-    if (text.includes("Сбербанк") || lower.includes("сбербанк") || text.includes("ПАО СБЕРБАНК")) {
-      return { bankKey: "sberbank", bankName: "Сбербанк" };
-    }
-
-    // Проверяем признаки Тинькофф/ТБАНК
-    if (lower.includes("тинькофф") || lower.includes("tinkoff") || lower.includes("тбанк")) {
-      return { bankKey: "tinkoff", bankName: "Тинькофф" };
-    }
-
-    // Проверяем признаки Озон-банка
-    if (text.includes("ОЗОН Банк") || lower.includes("ozon")) {
-      return { bankKey: "ozon", bankName: "Озон Банк" };
-    }
-
-    return null;
-  }
-
-  /**
    * Парсит PDF файл и извлекает транзакции
    */
-  async parsePdfFile(file) {
+  async parsePdfFile(file, selectedBank = null) {
     try {
       // Чтение PDF
       const arrayBuffer = await file.arrayBuffer();
@@ -83,9 +43,19 @@ export class PdfParser {
       }
 
       // Определяем формат банка
-      const bankFormat = this.detectBankFormat(fullText);
-      if (!bankFormat) {
-        throw new Error("Не удалось определить формат банковской выписки");
+      let bankFormat;
+      if (selectedBank) {
+        // Используем выбранный банк
+        const bankNames = {
+          sberbank: "Сбербанк",
+          alfabank: "Альфа-Банк",
+          tinkoff: "Тинькофф",
+          ozon: "Озон Банк",
+        };
+        bankFormat = { bankKey: selectedBank, bankName: bankNames[selectedBank] };
+      } else {
+        // Если банк не выбран, выбрасываем ошибку
+        throw new Error("Банк не выбран. Пожалуйста, выберите банк перед загрузкой файла.");
       }
 
       // Универсальные метаданные (пытаемся извлечь, если есть)
@@ -190,7 +160,7 @@ export class PdfParser {
 
       return uniqueTransactions;
     } catch (error) {
-      console.error(`❌ Ошибка при извлечении транзакций для банка ${bankFormat.bankKey}:`, error);
+      console.error(`Ошибка при извлечении транзакций для банка ${bankFormat.bankKey}:`, error);
       return [];
     }
   }

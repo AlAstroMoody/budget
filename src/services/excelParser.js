@@ -138,7 +138,7 @@ export class ExcelParser {
   /**
    * Парсит Excel файл и извлекает транзакции
    */
-  async parseExcelFile(file) {
+  async parseExcelFile(file, selectedBank = null) {
     try {
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.load(await file.arrayBuffer());
@@ -149,28 +149,49 @@ export class ExcelParser {
       }
 
       // Определяем формат банка
-      const bankFormat = this.detectBankFormat(worksheet);
-      if (!bankFormat) {
-        throw new Error("Не удалось определить формат банковской выписки");
+      let bankFormat;
+      if (selectedBank) {
+        // Используем выбранный банк
+        const bankNames = {
+          sberbank: "Сбербанк",
+          alfabank: "Альфа-Банк",
+          tinkoff: "Тинькофф",
+          ozon: "Озон Банк",
+        };
+
+        // Для выбранного банка определяем паттерн
+        let pattern = {};
+        let headerRow = 1; // По умолчанию заголовки в первой строке
+
+        if (selectedBank === "alfabank") {
+          // Паттерн для Альфа-банка: дата в колонке B, описание в L, сумма в N
+          pattern = { date: "B", description: "L", amount: "N" };
+          headerRow = 1; // Альфа-банк обычно имеет заголовки в первой строке
+        } else {
+          // Для других банков (Сбербанк, Тинькофф, Озон) Excel файлов нет
+          throw new Error(
+            `Банк ${bankNames[selectedBank]} не поддерживает Excel файлы. Используйте PDF файлы.`
+          );
+        }
+
+        bankFormat = {
+          bankKey: selectedBank,
+          bankName: bankNames[selectedBank],
+          pattern,
+          headerRow,
+        };
+      } else {
+        // Если банк не выбран, выбрасываем ошибку
+        throw new Error("Банк не выбран. Пожалуйста, выберите банк перед загрузкой файла.");
       }
 
       // Извлекаем транзакции
       const transactions = this.extractTransactions(worksheet, bankFormat);
 
-      // Автоматически определяем банк по содержимому файла
-      const detectedBank = this.detectBankFromContent(worksheet);
-
-      if (detectedBank) {
-        // Устанавливаем банк для всех транзакций
-        transactions.forEach((transaction) => {
-          transaction.bank = detectedBank;
-        });
-      } else {
-        // Если банк не определен автоматически, используем название из формата
-        transactions.forEach((transaction) => {
-          transaction.bank = bankFormat.bankName;
-        });
-      }
+      // Устанавливаем банк для всех транзакций (используем выбранный банк)
+      transactions.forEach((transaction) => {
+        transaction.bank = bankFormat.bankName;
+      });
 
       return {
         bankName: bankFormat.bankName,

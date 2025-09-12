@@ -86,7 +86,7 @@ export class SberbankParser extends BaseBankParser {
   extractTransactions(text) {
     const transactions = [];
 
-    // Паттерн для поиска транзакций Сбера в тексте
+    // Основной паттерн для поиска транзакций Сбера в тексте
     const sberTransactionPattern =
       /(\d{2}\.\d{2}\.\d{4})\s+(\d{2}:\d{2})\s+(\d+)\s+(.+?)\s+([+-]?\d{1,3}(?:\s\d{3})*(?:,\d{2})?)\s+(\d{1,3}(?:\s\d{3})*(?:,\d{2})?)/g;
 
@@ -115,7 +115,116 @@ export class SberbankParser extends BaseBankParser {
       }
     }
 
+    // Если основной паттерн не сработал, пробуем альтернативные
+    if (transactions.length === 0) {
+      // Альтернативный паттерн 1: дата + описание + сумма (без времени и кода)
+      const altPattern1 = /(\d{2}\.\d{2}\.\d{4})\s+(.+?)\s+([+-]?\d{1,3}(?:\s\d{3})*(?:,\d{2})?)/g;
+
+      let altMatch1;
+      while ((altMatch1 = altPattern1.exec(text)) !== null) {
+        const [, dateStr, description, amountStr] = altMatch1;
+
+        const date = this.parseDate(dateStr);
+        const amount = this.parseAmount(amountStr);
+
+        if (date && amount !== 0 && this.isValidTransactionDescription(description)) {
+          const transaction = {
+            date,
+            description: description.trim(),
+            amount,
+            category: this.detectCategory(description),
+            bank: "Сбербанк",
+            raw: altMatch1[0],
+            meta: {
+              pattern: "alternative1",
+            },
+          };
+          transactions.push(transaction);
+        }
+      }
+
+      // Альтернативный паттерн 2: дата + время + описание + сумма (без кода и баланса)
+      if (transactions.length === 0) {
+        const altPattern2 =
+          /(\d{2}\.\d{2}\.\d{4})\s+(\d{2}:\d{2})\s+(.+?)\s+([+-]?\d{1,3}(?:\s\d{3})*(?:,\d{2})?)/g;
+
+        let altMatch2;
+        while ((altMatch2 = altPattern2.exec(text)) !== null) {
+          const [, dateStr, timeStr, description, amountStr] = altMatch2;
+
+          const date = this.parseDate(dateStr);
+          const amount = this.parseAmount(amountStr);
+
+          if (date && amount !== 0 && this.isValidTransactionDescription(description)) {
+            const transaction = {
+              date,
+              description: description.trim(),
+              amount,
+              category: this.detectCategory(description),
+              bank: "Сбербанк",
+              raw: altMatch2[0],
+              meta: {
+                time: timeStr,
+                pattern: "alternative2",
+              },
+            };
+            transactions.push(transaction);
+          }
+        }
+      }
+    }
+
     return transactions;
+  }
+
+  isValidTransactionDescription(description) {
+    if (!description || typeof description !== "string") {
+      return false;
+    }
+
+    const desc = description.toLowerCase().trim();
+
+    // Исключаем служебную информацию
+    const excludePatterns = [
+      "действителен до",
+      "для проверки подлинности",
+      "итого по операциям",
+      "остаток на",
+      "генеральная лицензия",
+      "расшифровка операций",
+      "продолжение на следующей странице",
+      "дата формирования",
+      "пао сбербанк",
+      "www.sberbank.ru",
+      "альфа-банк",
+      "www.alfabank.ru",
+      "генеральная лицензия банка россии",
+      "страница",
+      "итого",
+      "баланс на начало",
+      "баланс на конец",
+      "выписка",
+      "период",
+      "счет",
+      "карта",
+      "номер",
+      "лицензия",
+      "банк россии",
+    ];
+
+    // Проверяем, не содержит ли описание служебную информацию
+    for (const pattern of excludePatterns) {
+      if (desc.includes(pattern)) {
+        return false;
+      }
+    }
+
+    // Проверяем, что описание не слишком короткое и не содержит только цифры
+    if (desc.length < 3 || /^\d+$/.test(desc)) {
+      return false;
+    }
+
+    return true;
   }
 
   detectCategory(description) {

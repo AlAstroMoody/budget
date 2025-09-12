@@ -1,5 +1,6 @@
 <script setup>
 import FileUpload from "./components/ui/FileUpload.vue";
+import BankSelector from "./components/ui/BankSelector.vue";
 import AllTransactionsTable from "./components/AllTransactionsTable.vue";
 import MonthlyTable from "./components/MonthlyTable.vue";
 import AddTransactionModal from "./components/ui/AddTransactionModal.vue";
@@ -13,6 +14,11 @@ const showMonthlyTable = ref(false);
 const showAddTransactionModal = ref(false);
 const hasUnsavedData = ref(false);
 const showAutoSwitchNotification = ref(false);
+const selectedBank = ref(null);
+
+function handleBankSelected(bankKey) {
+  selectedBank.value = bankKey;
+}
 
 async function handleFileParsed(parsedStatement) {
   if (allTable.value && allTable.value.addStatement) {
@@ -373,16 +379,18 @@ function clearAllData() {
             📊 Загрузить новую банковскую выписку
           </h2>
           <p class="text-gray-600 mb-4 text-sm">
-            Загрузите Excel или PDF файл с банковской выпиской. После загрузки данные будут
-            отображаться в таблице ниже, где вы сможете их просмотреть и сохранить в базу.
+            Сначала выберите банк, затем загрузите Excel или PDF файл с банковской выпиской. После
+            загрузки данные будут отображаться в таблице ниже, где вы сможете их просмотреть и
+            сохранить в базу.
           </p>
 
-          <!-- Список поддерживаемых банков -->
-          <div class="mb-3 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700">
-            <span class="font-medium">🏦 Поддерживаемые банки:</span> Сбербанк, Тинькофф, Озон-банк,
-            Альфа-банк, Наличные
+          <!-- Выбор банка -->
+          <div class="mb-4">
+            <BankSelector :selected-bank="selectedBank" @bank-selected="handleBankSelected" />
           </div>
-          <FileUpload @file-parsed="handleFileParsed" />
+
+          <!-- Загрузка файла -->
+          <FileUpload :selected-bank="selectedBank" @file-parsed="handleFileParsed" />
         </div>
 
         <!-- Режим просмотра базы данных -->
