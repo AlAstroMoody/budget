@@ -311,7 +311,8 @@ export class ExcelParser {
       // Проверяем формат дд.мм.гггг
       if (/^\d{2}\.\d{2}\.\d{4}$/.test(value)) {
         const [day, month, year] = value.split(".");
-        const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+        // Создаем дату в UTC, чтобы избежать проблем с часовыми поясами
+        const date = new Date(Date.UTC(parseInt(year), parseInt(month) - 1, parseInt(day)));
         return date;
       }
 

@@ -216,8 +216,8 @@ export class PdfParser {
         return null;
       }
 
-      // Создаем дату (месяц - 1, так как в JS месяцы начинаются с 0)
-      const date = new Date(yearNum, monthNum - 1, dayNum);
+      // Создаем дату в UTC, чтобы избежать проблем с часовыми поясами
+      const date = new Date(Date.UTC(yearNum, monthNum - 1, dayNum));
 
       // Проверяем, что дата действительно существует (например, 31.02.2024 не существует)
       if (
