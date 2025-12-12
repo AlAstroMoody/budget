@@ -70,7 +70,11 @@
                   isDragging && draggedCategory === category ? 'opacity-50 bg-gray-200' : '',
                   dragOverIndex === index ? 'bg-blue-100 shadow-md' : '',
                 ]"
-                :style="dragOverIndex === index ? 'outline: 4px solid rgb(59, 130, 246); outline-offset: -4px;' : ''"
+                :style="
+                  dragOverIndex === index
+                    ? 'outline: 4px solid rgb(59, 130, 246); outline-offset: -4px;'
+                    : ''
+                "
                 :draggable="true"
                 @dragstart="handleDragStart($event, category, index)"
                 @dragend="handleDragEnd($event)"
@@ -310,9 +314,7 @@ async function loadCategoryOrder() {
       const orderedCategories = savedOrder.filter((cat) =>
         categoriesWithTransactions.includes(cat)
       );
-      const newCategories = categoriesWithTransactions.filter(
-        (cat) => !savedOrder.includes(cat)
-      );
+      const newCategories = categoriesWithTransactions.filter((cat) => !savedOrder.includes(cat));
 
       editableCategories.value = [...orderedCategories, ...newCategories.sort()];
     }
@@ -341,12 +343,8 @@ const initEditableCategories = async () => {
   const savedOrder = await getCategoryOrderFromDb();
   if (savedOrder && Array.isArray(savedOrder) && savedOrder.length > 0) {
     // Применяем сохраненный порядок
-    const orderedCategories = savedOrder.filter((cat) =>
-      categoriesWithTransactions.includes(cat)
-    );
-    const newCategories = categoriesWithTransactions.filter(
-      (cat) => !savedOrder.includes(cat)
-    );
+    const orderedCategories = savedOrder.filter((cat) => categoriesWithTransactions.includes(cat));
+    const newCategories = categoriesWithTransactions.filter((cat) => !savedOrder.includes(cat));
 
     editableCategories.value = [...orderedCategories, ...newCategories.sort()];
   } else {
