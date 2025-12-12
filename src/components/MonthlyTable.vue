@@ -57,11 +57,27 @@
                 >
                   {{ month.label }}
                 </th>
+                <th class="border px-3 py-2 text-center font-semibold text-gray-700">В среднем</th>
                 <th class="border px-3 py-2 text-center font-semibold text-gray-700">Итого</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="category in editableCategories" :key="category" class="hover:bg-gray-50">
+              <tr
+                v-for="(category, index) in editableCategories"
+                :key="category"
+                :class="[
+                  'hover:bg-gray-50 transition-all duration-200',
+                  isDragging && draggedCategory === category ? 'opacity-50 bg-gray-200' : '',
+                  dragOverIndex === index ? 'bg-blue-100 shadow-md' : '',
+                ]"
+                :style="dragOverIndex === index ? 'outline: 4px solid rgb(59, 130, 246); outline-offset: -4px;' : ''"
+                :draggable="true"
+                @dragstart="handleDragStart($event, category, index)"
+                @dragend="handleDragEnd($event)"
+                @dragover="handleDragOver($event, index)"
+                @dragleave="handleDragLeave($event)"
+                @drop="handleDrop($event, index)"
+              >
                 <td class="border px-3 py-2 font-medium text-gray-900">
                   {{ category }}
                 </td>
@@ -74,17 +90,23 @@
                   </td>
                 </template>
                 <td class="border px-2 py-2 text-right font-semibold bg-gray-100 text-gray-900">
+                  {{ formatAmount(getCategoryAverage(category)) }}
+                </td>
+                <td class="border px-2 py-2 text-right font-semibold bg-gray-100 text-gray-900">
                   {{ formatAmount(getCategoryTotal(category)) }}
                 </td>
               </tr>
               <!-- Строка итогов -->
-              <tr class="bg-gray-100 font-bold">
+              <tr class="bg-gray-100 font-bold" :draggable="false">
                 <td class="border px-3 py-2 text-gray-900">ИТОГО</td>
                 <template v-for="month in months" :key="month.key">
                   <td class="border px-2 py-2 text-right bg-gray-200 text-gray-900">
                     {{ formatAmount(getMonthTotal(month.key)) }}
                   </td>
                 </template>
+                <td class="border px-2 py-2 text-right bg-gray-200 text-gray-900">
+                  {{ formatAmount(getGrandAverage()) }}
+                </td>
                 <td class="border px-2 py-2 text-right bg-gray-300 text-gray-900">
                   {{ formatAmount(getGrandTotal()) }}
                 </td>
@@ -99,7 +121,7 @@
 
 <script setup>
 import { computed, ref, watch, onMounted } from "vue";
-import { getCategoriesFromDb } from "../services/db";
+import { getCategoriesFromDb, getCategoryOrderFromDb, saveCategoryOrderToDb } from "../services/db";
 
 const props = defineProps({
   transactions: {
@@ -114,6 +136,11 @@ const selectedYear = ref("");
 
 // Редактируемые категории
 const editableCategories = ref([]);
+
+// Состояние для drag & drop
+const draggedCategory = ref(null);
+const dragOverIndex = ref(null);
+const isDragging = ref(false);
 
 // Месяцы для отображения (динамически на основе данных)
 const months = computed(() => {
@@ -252,6 +279,7 @@ const categories = computed(() => {
 // Загружаем категории из БД при монтировании компонента
 onMounted(async () => {
   await refreshCategoriesFromDb();
+  await loadCategoryOrder();
 });
 
 // Функция для обновления категорий из БД
@@ -268,21 +296,69 @@ async function refreshCategoriesFromDb() {
   }
 }
 
+// Загружаем порядок категорий из БД
+async function loadCategoryOrder() {
+  try {
+    const savedOrder = await getCategoryOrderFromDb();
+    if (savedOrder && Array.isArray(savedOrder) && savedOrder.length > 0) {
+      // Применяем сохраненный порядок, если он есть
+      const categoriesWithTransactions = Array.from(
+        new Set(props.transactions.map((t) => t.category))
+      ).filter(Boolean);
+
+      // Сортируем категории согласно сохраненному порядку
+      const orderedCategories = savedOrder.filter((cat) =>
+        categoriesWithTransactions.includes(cat)
+      );
+      const newCategories = categoriesWithTransactions.filter(
+        (cat) => !savedOrder.includes(cat)
+      );
+
+      editableCategories.value = [...orderedCategories, ...newCategories.sort()];
+    }
+  } catch (error) {
+    console.error("Ошибка при загрузке порядка категорий:", error);
+  }
+}
+
+// Сохраняем порядок категорий в БД
+async function saveCategoryOrder() {
+  try {
+    await saveCategoryOrderToDb(editableCategories.value);
+  } catch (error) {
+    console.error("Ошибка при сохранении порядка категорий:", error);
+  }
+}
+
 // Инициализируем редактируемые категории - только те, в которых есть транзакции
-const initEditableCategories = () => {
+const initEditableCategories = async () => {
   // Показываем только категории, в которых есть транзакции
   const categoriesWithTransactions = Array.from(
     new Set(props.transactions.map((t) => t.category))
   ).filter(Boolean);
 
-  editableCategories.value = categoriesWithTransactions.sort();
+  // Проверяем, есть ли сохраненный порядок
+  const savedOrder = await getCategoryOrderFromDb();
+  if (savedOrder && Array.isArray(savedOrder) && savedOrder.length > 0) {
+    // Применяем сохраненный порядок
+    const orderedCategories = savedOrder.filter((cat) =>
+      categoriesWithTransactions.includes(cat)
+    );
+    const newCategories = categoriesWithTransactions.filter(
+      (cat) => !savedOrder.includes(cat)
+    );
+
+    editableCategories.value = [...orderedCategories, ...newCategories.sort()];
+  } else {
+    editableCategories.value = categoriesWithTransactions.sort();
+  }
 };
 
 // Следим за изменениями в categories и обновляем editableCategories
 watch(
   [categories, dbCategories, () => props.transactions],
-  () => {
-    initEditableCategories();
+  async () => {
+    await initEditableCategories();
   },
   { immediate: true }
 );
@@ -339,6 +415,20 @@ function getCategoryTotal(category) {
   }, 0);
 }
 
+// Вычисляет среднее значение для категории (исключая месяцы с нулём)
+function getCategoryAverage(category) {
+  const values = [];
+  Object.keys(monthlyData.value).forEach((monthKey) => {
+    const total = getCategoryMonthTotal(monthKey, category);
+    if (total !== 0) {
+      values.push(total);
+    }
+  });
+
+  if (values.length === 0) return 0;
+  return values.reduce((sum, val) => sum + val, 0) / values.length;
+}
+
 function getMonthTotal(monthKey) {
   const monthData = monthlyData.value[monthKey] || {};
   return Object.values(monthData).reduce((total, categoryData) => {
@@ -350,6 +440,20 @@ function getGrandTotal() {
   return Object.keys(monthlyData.value).reduce((total, monthKey) => {
     return total + getMonthTotal(monthKey);
   }, 0);
+}
+
+// Вычисляет общее среднее значение (исключая месяцы с нулём)
+function getGrandAverage() {
+  const values = [];
+  Object.keys(monthlyData.value).forEach((monthKey) => {
+    const total = getMonthTotal(monthKey);
+    if (total !== 0) {
+      values.push(total);
+    }
+  });
+
+  if (values.length === 0) return 0;
+  return values.reduce((sum, val) => sum + val, 0) / values.length;
 }
 
 // Вспомогательные функции
@@ -412,8 +516,79 @@ function filterByYear() {
   // Автоматически обновляется через computed свойство months
 }
 
+// Обработчики drag & drop
+function handleDragStart(event, category, index) {
+  draggedCategory.value = category;
+  isDragging.value = true;
+  event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setData("text/html", category);
+  // Делаем элемент полупрозрачным при перетаскивании
+  event.target.style.opacity = "0.5";
+}
+
+function handleDragEnd(event) {
+  event.target.style.opacity = "1";
+  draggedCategory.value = null;
+  dragOverIndex.value = null;
+  isDragging.value = false;
+}
+
+function handleDragOver(event, index) {
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "move";
+  dragOverIndex.value = index;
+}
+
+function handleDragLeave(event) {
+  // Проверяем, что мы действительно покинули элемент (не перешли на дочерний)
+  if (!event.currentTarget.contains(event.relatedTarget)) {
+    dragOverIndex.value = null;
+  }
+}
+
+function handleDrop(event, targetIndex) {
+  event.preventDefault();
+
+  if (draggedCategory.value === null) return;
+
+  const currentIndex = editableCategories.value.indexOf(draggedCategory.value);
+  if (currentIndex === -1 || currentIndex === targetIndex) {
+    dragOverIndex.value = null;
+    return;
+  }
+
+  // Перемещаем категорию
+  const newCategories = [...editableCategories.value];
+  const [removed] = newCategories.splice(currentIndex, 1);
+  newCategories.splice(targetIndex, 0, removed);
+
+  editableCategories.value = newCategories;
+
+  // Сохраняем новый порядок
+  saveCategoryOrder();
+
+  dragOverIndex.value = null;
+  draggedCategory.value = null;
+}
+
 // Экспортируем функции для внешнего использования
 defineExpose({
   refreshCategoriesFromDb,
 });
 </script>
+
+<style scoped>
+/* Стили для drag & drop */
+tr[draggable="true"] {
+  cursor: move;
+}
+
+tr[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+/* Визуальный индикатор места вставки */
+tr.bg-blue-100 {
+  transition: background-color 0.2s ease;
+}
+</style>

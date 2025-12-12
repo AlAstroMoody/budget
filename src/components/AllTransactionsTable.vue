@@ -56,6 +56,11 @@ const showClearAllModal = ref(false);
 const selectedTransactions = ref(new Set());
 const showBulkDeleteModal = ref(false);
 
+// Состояние для массового редактирования
+const showBulkEditModal = ref(false);
+const bulkEditBank = ref("");
+const bulkEditCategory = ref("");
+
 // Загружаем пользовательские категории из БД
 async function loadUserCategoriesFromDb() {
   try {
@@ -215,6 +220,109 @@ async function deleteSelectedTransactions() {
 
 function cancelBulkDelete() {
   showBulkDeleteModal.value = false;
+}
+
+// Функции для массового редактирования
+function showBulkEditConfirmation() {
+  if (selectedTransactions.value.size === 0) {
+    notify("Выберите транзакции для редактирования", "warning");
+    return;
+  }
+  // Сбрасываем значения формы
+  bulkEditBank.value = "";
+  bulkEditCategory.value = "";
+  showBulkEditModal.value = true;
+}
+
+async function saveBulkEdit() {
+  try {
+    const transactionsToEdit = filtered.value.filter((transaction) =>
+      selectedTransactions.value.has(getTransactionId(transaction))
+    );
+
+    if (transactionsToEdit.length === 0) {
+      notify("Нет выбранных транзакций для редактирования", "warning");
+      return;
+    }
+
+    // Определяем, какие поля нужно обновить
+    const updates = {};
+    if (bulkEditBank.value) {
+      updates.bank = bulkEditBank.value;
+    }
+    if (bulkEditCategory.value) {
+      updates.category = bulkEditCategory.value;
+    }
+
+    // Если ничего не выбрано для изменения
+    if (Object.keys(updates).length === 0) {
+      notify("Выберите хотя бы одно поле для изменения", "warning");
+      return;
+    }
+
+    if (isDatabaseMode.value) {
+      // Обновляем транзакции в базе данных
+      const transactionsWithoutId = transactionsToEdit.filter((t) => !t.id);
+      if (transactionsWithoutId.length > 0) {
+        throw new Error(
+          `Некоторые транзакции не имеют ID для обновления в базе данных (${transactionsWithoutId.length})`
+        );
+      }
+
+      // Обновляем каждую транзакцию в БД
+      let updatedCount = 0;
+      for (const transaction of transactionsToEdit) {
+        try {
+          await updateTransactionInDb(transaction.id, updates);
+          updatedCount++;
+
+          // Обновляем локальный объект транзакции
+          for (const statement of statements.value) {
+            const transactionIndex = statement.transactions.findIndex((t) => t.id === transaction.id);
+            if (transactionIndex !== -1) {
+              Object.assign(statement.transactions[transactionIndex], updates);
+              break;
+            }
+          }
+        } catch (error) {
+          console.error(`Ошибка при обновлении транзакции ${transaction.id}:`, error);
+        }
+      }
+
+      notify(
+        `Обновлено ${updatedCount} из ${transactionsToEdit.length} транзакций`,
+        updatedCount === transactionsToEdit.length ? "success" : "warning"
+      );
+
+      // Перезагружаем данные из базы для полной синхронизации
+      await loadStatementsFromDb();
+    } else {
+      // Обновляем транзакции в памяти (несохраненные данные)
+      for (const transaction of transactionsToEdit) {
+        Object.assign(transaction, updates);
+      }
+
+      notify(`Обновлено ${transactionsToEdit.length} транзакций`, "success");
+    }
+
+    // Очищаем выделение и закрываем модальное окно
+    selectedTransactions.value.clear();
+    showBulkEditModal.value = false;
+    bulkEditBank.value = "";
+    bulkEditCategory.value = "";
+
+    // Принудительно обновляем таблицу
+    tableKey.value++;
+  } catch (error) {
+    console.error("Ошибка при массовом редактировании транзакций:", error);
+    notify("Ошибка при массовом редактировании транзакций", "error");
+  }
+}
+
+function cancelBulkEdit() {
+  showBulkEditModal.value = false;
+  bulkEditBank.value = "";
+  bulkEditCategory.value = "";
 }
 
 // Добавление новой выписки
@@ -1220,7 +1328,7 @@ defineExpose({
     <div class="ml-auto text-xs text-gray-500">Показано: {{ filtered.length }}</div>
   </div>
 
-  <!-- Кнопки массового удаления -->
+  <!-- Кнопки массового удаления и редактирования -->
   <div
     v-if="getSelectedTransactionsCount() > 0"
     class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg"
@@ -1237,12 +1345,20 @@ defineExpose({
           Снять выделение
         </button>
       </div>
-      <button
-        @click="showBulkDeleteConfirmation"
-        class="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-colors text-sm"
-      >
-        Удалить выбранные ({{ getSelectedTransactionsCount() }})
-      </button>
+      <div class="flex items-center space-x-2">
+        <button
+          @click="showBulkEditConfirmation"
+          class="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors text-sm"
+        >
+          ✏️ Редактировать выбранные
+        </button>
+        <button
+          @click="showBulkDeleteConfirmation"
+          class="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-colors text-sm"
+        >
+          Удалить выбранные ({{ getSelectedTransactionsCount() }})
+        </button>
+      </div>
     </div>
   </div>
 
@@ -1516,6 +1632,70 @@ defineExpose({
             class="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
           >
             Удалить {{ getSelectedTransactionsCount() }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Модальное окно массового редактирования -->
+  <div
+    v-if="showBulkEditModal"
+    class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+    @click="cancelBulkEdit"
+  >
+    <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4" @click.stop>
+      <div class="p-6">
+        <div class="flex items-center mb-4">
+          <div class="text-green-500 text-2xl mr-3">✏️</div>
+          <h3 class="text-lg font-semibold text-gray-900">Редактировать выбранные транзакции</h3>
+        </div>
+
+        <div class="mb-6">
+          <p class="text-gray-600 mb-4">
+            Будет обновлено <strong>{{ getSelectedTransactionsCount() }}</strong> транзакций.
+            Оставьте поле пустым, если не хотите его изменять.
+          </p>
+
+          <div class="space-y-4">
+            <!-- Банк -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Банк</label>
+              <UniversalSelect
+                v-model="bulkEditBank"
+                :items="banks"
+                placeholder="Оставить без изменений"
+                item-name="банк"
+                :allow-add-new="true"
+                @item-added="(newBank) => onBankAdded(newBank)"
+              />
+            </div>
+
+            <!-- Категория -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Категория</label>
+              <CategorySelect
+                v-model="bulkEditCategory"
+                :categories="availableCategories"
+                placeholder="Оставить без изменений"
+                @category-added="onCategoryAdded"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div class="flex space-x-3">
+          <button
+            @click="cancelBulkEdit"
+            class="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            Отмена
+          </button>
+          <button
+            @click="saveBulkEdit"
+            class="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
+          >
+            Применить к {{ getSelectedTransactionsCount() }} транзакциям
           </button>
         </div>
       </div>

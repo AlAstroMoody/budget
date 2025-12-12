@@ -2,6 +2,7 @@ import { set, get, del, keys } from "idb-keyval";
 
 const TRANSACTION_PREFIX = "transaction-";
 const CATEGORIES_KEY = "categories";
+const CATEGORY_ORDER_KEY = "category-order";
 
 // Генерация уникального ID для транзакции
 function generateTransactionId() {
@@ -301,6 +302,36 @@ export async function deleteCategoryFromDb(categoryToDelete) {
   } catch (error) {
     console.error("Ошибка при удалении категории:", error);
     throw error;
+  }
+}
+
+// Функции для работы с порядком категорий
+export async function saveCategoryOrderToDb(categoryOrder) {
+  try {
+    const plainOrder = JSON.parse(JSON.stringify(categoryOrder));
+
+    const orderData = {
+      order: plainOrder,
+      updatedAt: new Date().toISOString(),
+    };
+    await set(CATEGORY_ORDER_KEY, orderData);
+    return true;
+  } catch (error) {
+    console.error("Ошибка при сохранении порядка категорий:", error);
+    throw error;
+  }
+}
+
+export async function getCategoryOrderFromDb() {
+  try {
+    const orderData = await get(CATEGORY_ORDER_KEY);
+    if (orderData && orderData.order) {
+      return orderData.order;
+    }
+    return null;
+  } catch (error) {
+    console.error("Ошибка при получении порядка категорий:", error);
+    return null;
   }
 }
 
