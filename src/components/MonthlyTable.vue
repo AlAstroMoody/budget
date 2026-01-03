@@ -45,78 +45,186 @@
           {{ months.length }} | Категорий: {{ editableCategories.length }}
         </div>
 
-        <div v-if="monthlyData && Object.keys(monthlyData).length > 0" class="overflow-x-auto">
-          <table class="min-w-full border-collapse">
-            <thead>
-              <tr class="bg-gray-50">
-                <th class="border px-3 py-2 text-left font-semibold text-gray-700">Категория</th>
-                <th
-                  v-for="month in months"
-                  :key="month.key"
-                  class="border px-3 py-2 text-center font-semibold text-gray-700"
-                >
-                  {{ month.label }}
-                </th>
-                <th class="border px-3 py-2 text-center font-semibold text-gray-700">В среднем</th>
-                <th class="border px-3 py-2 text-center font-semibold text-gray-700">Итого</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="(category, index) in editableCategories"
-                :key="category"
-                :class="[
-                  'hover:bg-gray-50 transition-all duration-200',
-                  isDragging && draggedCategory === category ? 'opacity-50 bg-gray-200' : '',
-                  dragOverIndex === index ? 'bg-blue-100 shadow-md' : '',
-                ]"
-                :style="
-                  dragOverIndex === index
-                    ? 'outline: 4px solid rgb(59, 130, 246); outline-offset: -4px;'
-                    : ''
-                "
-                :draggable="true"
-                @dragstart="handleDragStart($event, category, index)"
-                @dragend="handleDragEnd($event)"
-                @dragover="handleDragOver($event, index)"
-                @dragleave="handleDragLeave($event)"
-                @drop="handleDrop($event, index)"
-              >
-                <td class="border px-3 py-2 font-medium text-gray-900">
-                  {{ category }}
-                </td>
-                <template v-for="month in months" :key="month.key">
-                  <td
-                    class="border px-2 py-2 text-right"
-                    :class="getCellClass(getCategoryMonthTotal(month.key, category))"
+        <div v-if="monthlyData && Object.keys(monthlyData).length > 0" class="space-y-6">
+          <!-- Таблица расходов -->
+          <div class="overflow-x-auto">
+            <h3 class="text-lg font-semibold text-red-700 mb-2">
+              Расходы (категории с отрицательными месяцами)
+            </h3>
+            <table class="min-w-full border-collapse">
+              <thead>
+                <tr class="bg-gray-50">
+                  <th class="border px-3 py-2 text-left font-semibold text-gray-700">Категория</th>
+                  <th
+                    v-for="month in months"
+                    :key="month.key"
+                    class="border px-3 py-2 text-center font-semibold text-gray-700"
                   >
-                    {{ formatAmount(getCategoryMonthTotal(month.key, category)) }}
+                    {{ month.label }}
+                  </th>
+                  <th class="border px-3 py-2 text-center font-semibold text-gray-700">
+                    В среднем
+                  </th>
+                  <th class="border px-3 py-2 text-center font-semibold text-gray-700">Итого</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="(category, index) in expenseCategories"
+                  :key="`exp-${category}`"
+                  :class="[
+                    'hover:bg-gray-50 transition-all duration-200',
+                    isDragging && draggedCategory === category ? 'opacity-50 bg-gray-200' : '',
+                    dragOverIndex === index ? 'bg-blue-100 shadow-md' : '',
+                  ]"
+                  :style="
+                    dragOverIndex === index
+                      ? 'outline: 4px solid rgb(59, 130, 246); outline-offset: -4px;'
+                      : ''
+                  "
+                  :draggable="true"
+                  @dragstart="handleDragStart($event, category, index)"
+                  @dragend="handleDragEnd($event)"
+                  @dragover="handleDragOver($event, index)"
+                  @dragleave="handleDragLeave($event)"
+                  @drop="handleDrop($event, index)"
+                >
+                  <td class="border px-3 py-2 font-medium text-gray-900">
+                    {{ category }}
                   </td>
-                </template>
-                <td class="border px-2 py-2 text-right font-semibold bg-gray-100 text-gray-900">
-                  {{ formatAmount(getCategoryAverage(category)) }}
-                </td>
-                <td class="border px-2 py-2 text-right font-semibold bg-gray-100 text-gray-900">
-                  {{ formatAmount(getCategoryTotal(category)) }}
-                </td>
-              </tr>
-              <!-- Строка итогов -->
-              <tr class="bg-gray-100 font-bold" :draggable="false">
-                <td class="border px-3 py-2 text-gray-900">ИТОГО</td>
-                <template v-for="month in months" :key="month.key">
+                  <template v-for="month in months" :key="month.key">
+                    <td
+                      class="border px-2 py-2 text-right"
+                      :class="getCellClass(getCategoryMonthTotal(month.key, category))"
+                    >
+                      {{ formatAmount(getCategoryMonthTotal(month.key, category)) }}
+                    </td>
+                  </template>
+                  <td class="border px-2 py-2 text-right font-semibold bg-gray-100 text-gray-900">
+                    {{ formatAmount(getCategoryAverage(category)) }}
+                  </td>
+                  <td class="border px-2 py-2 text-right font-semibold bg-gray-100 text-gray-900">
+                    {{ formatAmount(getCategoryTotal(category)) }}
+                  </td>
+                </tr>
+                <!-- Итог по расходам -->
+                <tr class="bg-gray-100 font-bold" :draggable="false">
+                  <td class="border px-3 py-2 text-gray-900">ИТОГО расходы</td>
+                  <template v-for="month in months" :key="month.key">
+                    <td class="border px-2 py-2 text-right bg-gray-200 text-gray-900">
+                      {{ formatAmount(getGroupMonthTotal(month.key, expenseCategories)) }}
+                    </td>
+                  </template>
                   <td class="border px-2 py-2 text-right bg-gray-200 text-gray-900">
-                    {{ formatAmount(getMonthTotal(month.key)) }}
+                    {{ formatAmount(getGroupAverage(expenseCategories)) }}
                   </td>
-                </template>
-                <td class="border px-2 py-2 text-right bg-gray-200 text-gray-900">
-                  {{ formatAmount(getGrandAverage()) }}
-                </td>
-                <td class="border px-2 py-2 text-right bg-gray-300 text-gray-900">
-                  {{ formatAmount(getGrandTotal()) }}
-                </td>
-              </tr>
-            </tbody>
-          </table>
+                  <td class="border px-2 py-2 text-right bg-gray-300 text-gray-900">
+                    {{ formatAmount(getGroupTotal(expenseCategories)) }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Таблица доходов -->
+          <div class="overflow-x-auto">
+            <h3 class="text-lg font-semibold text-green-700 mb-2">Доходы (остальные категории)</h3>
+            <table class="min-w-full border-collapse">
+              <thead>
+                <tr class="bg-gray-50">
+                  <th class="border px-3 py-2 text-left font-semibold text-gray-700">Категория</th>
+                  <th
+                    v-for="month in months"
+                    :key="month.key"
+                    class="border px-3 py-2 text-center font-semibold text-gray-700"
+                  >
+                    {{ month.label }}
+                  </th>
+                  <th class="border px-3 py-2 text-center font-semibold text-gray-700">
+                    В среднем
+                  </th>
+                  <th class="border px-3 py-2 text-center font-semibold text-gray-700">Итого</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="(category, index) in incomeCategories"
+                  :key="`inc-${category}`"
+                  :class="[
+                    'hover:bg-gray-50 transition-all duration-200',
+                    isDragging && draggedCategory === category ? 'opacity-50 bg-gray-200' : '',
+                    dragOverIndex === index ? 'bg-blue-100 shadow-md' : '',
+                  ]"
+                  :style="
+                    dragOverIndex === index
+                      ? 'outline: 4px solid rgb(59, 130, 246); outline-offset: -4px;'
+                      : ''
+                  "
+                  :draggable="true"
+                  @dragstart="handleDragStart($event, category, index)"
+                  @dragend="handleDragEnd($event)"
+                  @dragover="handleDragOver($event, index)"
+                  @dragleave="handleDragLeave($event)"
+                  @drop="handleDrop($event, index)"
+                >
+                  <td class="border px-3 py-2 font-medium text-gray-900">
+                    {{ category }}
+                  </td>
+                  <template v-for="month in months" :key="month.key">
+                    <td
+                      class="border px-2 py-2 text-right"
+                      :class="getCellClass(getCategoryMonthTotal(month.key, category))"
+                    >
+                      {{ formatAmount(getCategoryMonthTotal(month.key, category)) }}
+                    </td>
+                  </template>
+                  <td class="border px-2 py-2 text-right font-semibold bg-gray-100 text-gray-900">
+                    {{ formatAmount(getCategoryAverage(category)) }}
+                  </td>
+                  <td class="border px-2 py-2 text-right font-semibold bg-gray-100 text-gray-900">
+                    {{ formatAmount(getCategoryTotal(category)) }}
+                  </td>
+                </tr>
+                <!-- Итог по доходам -->
+                <tr class="bg-gray-100 font-bold" :draggable="false">
+                  <td class="border px-3 py-2 text-gray-900">ИТОГО доходы</td>
+                  <template v-for="month in months" :key="month.key">
+                    <td class="border px-2 py-2 text-right bg-gray-200 text-gray-900">
+                      {{ formatAmount(getGroupMonthTotal(month.key, incomeCategories)) }}
+                    </td>
+                  </template>
+                  <td class="border px-2 py-2 text-right bg-gray-200 text-gray-900">
+                    {{ formatAmount(getGroupAverage(incomeCategories)) }}
+                  </td>
+                  <td class="border px-2 py-2 text-right bg-gray-300 text-gray-900">
+                    {{ formatAmount(getGroupTotal(incomeCategories)) }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Общее итого -->
+          <div class="overflow-x-auto">
+            <table class="min-w-full border-collapse">
+              <tbody>
+                <tr class="bg-gray-200 font-bold">
+                  <td class="border px-3 py-2 text-gray-900 w-40">ОБЩЕЕ ИТОГО</td>
+                  <template v-for="month in months" :key="month.key">
+                    <td class="border px-2 py-2 text-right text-gray-900">
+                      {{ formatAmount(getMonthTotal(month.key)) }}
+                    </td>
+                  </template>
+                  <td class="border px-2 py-2 text-right text-gray-900">
+                    {{ formatAmount(getGrandAverage()) }}
+                  </td>
+                  <td class="border px-2 py-2 text-right text-gray-900">
+                    {{ formatAmount(getGrandTotal()) }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
@@ -140,6 +248,17 @@ const selectedYear = ref("");
 
 // Редактируемые категории
 const editableCategories = ref([]);
+
+// Категории, разбитые по наличию расходов в выбранном году
+const expenseCategories = computed(() =>
+  editableCategories.value.filter((category) =>
+    months.value.some((m) => getCategoryMonthTotal(m.key, category) < 0)
+  )
+);
+
+const incomeCategories = computed(() =>
+  editableCategories.value.filter((category) => !expenseCategories.value.includes(category))
+);
 
 // Состояние для drag & drop
 const draggedCategory = ref(null);
@@ -438,6 +557,29 @@ function getGrandTotal() {
   return Object.keys(monthlyData.value).reduce((total, monthKey) => {
     return total + getMonthTotal(monthKey);
   }, 0);
+}
+
+// Групповые итоги по наборам категорий
+function getGroupMonthTotal(monthKey, categoriesList) {
+  return categoriesList.reduce(
+    (sum, category) => sum + getCategoryMonthTotal(monthKey, category),
+    0
+  );
+}
+
+function getGroupTotal(categoriesList) {
+  return months.value.reduce(
+    (sum, month) => sum + getGroupMonthTotal(month.key, categoriesList),
+    0
+  );
+}
+
+function getGroupAverage(categoriesList) {
+  const values = months.value
+    .map((m) => getGroupMonthTotal(m.key, categoriesList))
+    .filter((v) => v !== 0);
+  if (values.length === 0) return 0;
+  return values.reduce((a, b) => a + b, 0) / values.length;
 }
 
 // Вычисляет общее среднее значение (исключая месяцы с нулём)

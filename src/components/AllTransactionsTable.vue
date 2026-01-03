@@ -8,7 +8,6 @@ import DateEditor from "./ui/DateEditor.vue";
 import {
   aggregateTransactions,
   filterAndSortTransactions,
-  removeDuplicateTransactions,
 } from "../services/pdfParser";
 import {
   saveTransactionsToDb,
@@ -21,7 +20,6 @@ import {
   deleteTransactionFromDb,
   addCategoryToDb,
   getCategoriesFromDb,
-  checkDuplicateTransactions,
 } from "../services/db";
 
 defineProps({
@@ -60,6 +58,7 @@ const showBulkDeleteModal = ref(false);
 const showBulkEditModal = ref(false);
 const bulkEditBank = ref("");
 const bulkEditCategory = ref("");
+const bulkEditDescription = ref("");
 
 // Загружаем пользовательские категории из БД
 async function loadUserCategoriesFromDb() {
@@ -253,6 +252,9 @@ async function saveBulkEdit() {
     if (bulkEditCategory.value) {
       updates.category = bulkEditCategory.value;
     }
+    if (bulkEditDescription.value.trim()) {
+      updates.description = bulkEditDescription.value.trim();
+    }
 
     // Если ничего не выбрано для изменения
     if (Object.keys(updates).length === 0) {
@@ -310,6 +312,7 @@ async function saveBulkEdit() {
     showBulkEditModal.value = false;
     bulkEditBank.value = "";
     bulkEditCategory.value = "";
+    bulkEditDescription.value = "";
 
     // Принудительно обновляем таблицу
     tableKey.value++;
@@ -323,6 +326,7 @@ function cancelBulkEdit() {
   showBulkEditModal.value = false;
   bulkEditBank.value = "";
   bulkEditCategory.value = "";
+  bulkEditDescription.value = "";
 }
 
 // Добавление новой выписки
@@ -342,43 +346,13 @@ async function addStatement(newStatement) {
   }
 
   try {
-    // Проверяем дубликаты в базе данных
-    const { uniqueTransactions, duplicateCount, uniqueCount } = await checkDuplicateTransactions(
-      newStatement.transactions
-    );
-
-    // Создаем новую выписку только с уникальными транзакциями
-    const filteredStatement = {
-      ...newStatement,
-      transactions: uniqueTransactions,
-    };
-
-    // Подсчёт новых и дублирующихся транзакций (локально)
-    const allTx = aggregateTransactions(statements.value);
-    const newTx = filteredStatement.transactions;
-    const uniqueNew =
-      removeDuplicateTransactions([...allTx, ...newTx]).length -
-      removeDuplicateTransactions(allTx).length;
-    const localDups = newTx.length - uniqueNew;
-
-    statements.value.push(filteredStatement);
+    // Сохраняем все транзакции как есть (без удаления одинаковых)
+    statements.value.push(newStatement);
 
     // Обновляем ключ таблицы для принудительного перерендера
     tableKey.value = tableKey.value + 1;
 
-    // Показываем уведомления
-    if (uniqueCount > 0) {
-      notify(`Добавлено новых транзакций: ${uniqueCount}`, "success");
-    }
-    if (duplicateCount > 0) {
-      notify(`Дубликатов в БД: ${duplicateCount}`, "warning");
-    }
-    if (localDups > 0) {
-      notify(`Локальных дубликатов: ${localDups}`, "info");
-    }
-    if (uniqueCount === 0) {
-      notify("Все транзакции уже есть в базе данных", "info");
-    }
+    notify(`Добавлено транзакций: ${newStatement.transactions.length}`, "success");
   } catch (error) {
     console.error("Ошибка при проверке дубликатов:", error);
     notify("Ошибка при проверке дубликатов", "error");
@@ -387,11 +361,9 @@ async function addStatement(newStatement) {
 
 // Функция для установки дат по умолчанию (от начала года до сегодня)
 function setDefaultDates() {
-  const today = new Date();
-  const startOfYear = new Date(today.getFullYear(), 0, 1); // 1 января текущего года
-
-  dateFrom.value = startOfYear.toISOString().split("T")[0];
-  dateTo.value = today.toISOString().split("T")[0];
+  // Показываем все даты по умолчанию, чтобы сразу видеть загруженные данные
+  dateFrom.value = "";
+  dateTo.value = "";
 }
 
 function resetFilters() {
@@ -608,57 +580,8 @@ const categories = computed(() =>
   Array.from(new Set(allTransactions.value.map((t) => t.category))).filter(Boolean)
 );
 
-// Доступные категории для селекта (включая дефолтные)
-const availableCategories = computed(() => {
-  const defaultCategories = [
-    "Продукты",
-    "Доставка еды",
-    "Кофе",
-    "Товары для дома",
-    "Кафе и рестораны",
-    "Коты",
-    "Кварт.плата",
-    "Интернет и телефон",
-    "Аптеки",
-    "Здоровье",
-    "Фитнес",
-    "Развлечения",
-    "Хобби",
-    "Творчество",
-    "Техника",
-    "Одежда",
-    "Обувь",
-    "Аксессуары",
-    "Топливо",
-    "Машина",
-    "Красота",
-    "Косметика",
-    "Повседневные товары для ухода",
-    "Семья",
-    "Подарки друзьям",
-    "Траты на ком.услуги дома",
-    "Недвижимость",
-    "Мебель",
-    "Ремонт",
-    "Экстра траты",
-    "ЗП Ви",
-    "ЗП Лё",
-    "Прочие доходы Ви",
-    "Прочие доходы Лё",
-    "Кэшбэк",
-    "% на остаток и вклады",
-    "Налоги",
-    "Прочее",
-  ];
-
-  // Объединяем дефолтные категории с уже существующими в данных и пользовательскими
-  const existingCategories = categories.value;
-  const allCategories = [
-    ...new Set([...defaultCategories, ...existingCategories, ...userCategories.value]),
-  ];
-
-  return allCategories.sort();
-});
+// Доступные категории для селекта (только те, что есть в транзакциях)
+const availableCategories = computed(() => [...categories.value].sort());
 
 // Обработчик добавления новой категории
 async function onCategoryAdded(newCategory) {
@@ -762,6 +685,11 @@ const filtered = computed(() => {
   return arr;
 });
 
+// Итоговая сумма по отфильтрованным транзакциям
+const filteredTotal = computed(() =>
+  filtered.value.reduce((sum, t) => sum + (t.amount || 0), 0)
+);
+
 function setSort(field) {
   if (sortField.value === field) {
     sortDirection.value = sortDirection.value === "asc" ? "desc" : "asc";
@@ -811,48 +739,9 @@ async function loadStatementsFromDb() {
     const loadedTransactions = await getAllTransactionsFromDb();
 
     if (Array.isArray(loadedTransactions) && loadedTransactions.length > 0) {
-      // Удаляем дубликаты из загруженных транзакций
-      const uniqueTransactions = removeDuplicateTransactions(loadedTransactions);
-
-      if (uniqueTransactions.length < loadedTransactions.length) {
-        const duplicateCount = loadedTransactions.length - uniqueTransactions.length;
-
-        // Физически удаляем дубликаты из базы данных
-        const seen = new Set();
-        const duplicateIds = [];
-
-        for (const transaction of loadedTransactions) {
-          const key = [
-            transaction.date instanceof Date
-              ? transaction.date.toISOString().slice(0, 10)
-              : transaction.date,
-            transaction.amount,
-            (transaction.description || "").replace(/\s+/g, "").toLowerCase(),
-            transaction.bank,
-            transaction.category || "",
-          ].join("|");
-
-          if (seen.has(key)) {
-            // Это дубликат, добавляем ID для удаления
-            if (transaction.id) {
-              duplicateIds.push(transaction.id);
-            }
-          } else {
-            seen.add(key);
-          }
-        }
-
-        // Удаляем дубликаты из БД
-        for (const duplicateId of duplicateIds) {
-          await deleteTransactionFromDb(duplicateId);
-        }
-
-        notify(`Удалено ${duplicateCount} дубликатов из базы данных`, "info");
-      }
-
       // Группируем транзакции по банку для совместимости с существующим кодом
       const groupedByBank = {};
-      uniqueTransactions.forEach((transaction) => {
+      loadedTransactions.forEach((transaction) => {
         const bank = transaction.bank || "Неизвестный банк";
         if (!groupedByBank[bank]) {
           groupedByBank[bank] = [];
@@ -873,10 +762,7 @@ async function loadStatementsFromDb() {
       }));
 
       isDatabaseMode.value = true;
-      notify(
-        `Загружено ${uniqueTransactions.length} уникальных транзакций из IndexedDB`,
-        "success"
-      );
+      notify(`Загружено ${loadedTransactions.length} транзакций из IndexedDB`, "success");
     } else {
       statements.value = [];
       isDatabaseMode.value = true;
@@ -1494,6 +1380,23 @@ defineExpose({
     </template>
   </Table>
 
+  <!-- Итоговая сумма по выбранным фильтрам -->
+  <div class="mt-3 flex items-center justify-between text-sm text-gray-700 bg-gray-50 p-3 rounded border">
+    <div>Показано: {{ filtered.length }}</div>
+    <div>
+      Итого по фильтрам:
+      <span :class="filteredTotal >= 0 ? 'text-green-700' : 'text-red-700'">
+        {{ filteredTotal >= 0 ? '+' : '' }}{{
+          filteredTotal.toLocaleString('ru-RU', {
+            style: 'currency',
+            currency: 'RUB',
+            minimumFractionDigits: 0,
+          })
+        }}
+      </span>
+    </div>
+  </div>
+
   <!-- Модальное окно подтверждения удаления -->
   <div
     v-if="showDeleteModal"
@@ -1658,6 +1561,17 @@ defineExpose({
           </p>
 
           <div class="space-y-4">
+            <!-- Описание -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Описание</label>
+              <input
+                v-model="bulkEditDescription"
+                type="text"
+                placeholder="Оставить без изменений"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
             <!-- Банк -->
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-2">Банк</label>

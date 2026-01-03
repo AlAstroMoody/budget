@@ -144,21 +144,8 @@ export class PdfParser {
       // Используем банк-специфичный парсер для извлечения транзакций
       const transactions = bankParser.extractTransactions(processedText);
 
-      // Удаляем дубликаты
-      const uniqueTransactions = [];
-      for (const transaction of transactions) {
-        const isDuplicate = uniqueTransactions.some(
-          (t) =>
-            t.date?.getTime() === transaction.date?.getTime() &&
-            t.description === transaction.description &&
-            t.amount === transaction.amount
-        );
-        if (!isDuplicate) {
-          uniqueTransactions.push(transaction);
-        }
-      }
-
-      return uniqueTransactions;
+      // Возвращаем транзакции как есть (без удаления возможных дублей)
+      return transactions;
     } catch (error) {
       console.error(`Ошибка при извлечении транзакций для банка ${bankFormat.bankKey}:`, error);
       return [];

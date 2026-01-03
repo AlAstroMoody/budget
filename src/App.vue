@@ -261,7 +261,7 @@ function clearAllData() {
 
 <template>
   <div class="min-h-screen bg-gray-50">
-    <div class="w-full max-w-none mx-auto space-y-4 p-4">
+    <div class="w-full max-w-none mx-auto p-4">
       <!-- Заголовок приложения -->
       <header class="bg-white border-b border-gray-200 px-4 py-3">
         <div class="flex items-center justify-between">
@@ -295,7 +295,7 @@ function clearAllData() {
       </div>
 
       <!-- Карточки статистики -->
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
         <Card class="text-center hover:shadow-lg transition-shadow">
           <div class="text-xs text-gray-500 mb-1">
             {{ currentMode === "upload" ? "📁 Загруженные файлы" : "💾 База данных" }}
