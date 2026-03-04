@@ -300,32 +300,61 @@ export class TinkoffParser extends BaseBankParser {
   }
 
   extractTransactions(text) {
-    const transactions = [];
-
-    // Паттерн для поиска транзакций Тинькофф в тексте
-    const tinkoffTransactionPattern =
-      /(\d{2}\.\d{2}\.\d{4})\s+\d{2}:\d{2}\s+\d{2}\.\d{2}\.\d{4}\s+\d{2}:\d{2}\s+([+-]?\d[\d\s]*[.,]\d{2})\s*₽\s*[+-]?\d[\d\s]*[.,]\d{2}\s*₽\s*([А-Яа-яA-Za-z0-9 .№()%-]+?)\s+\d{4}/g;
-
-    let match;
-    while ((match = tinkoffTransactionPattern.exec(text)) !== null) {
-      const [, dateStr, amountStr, description] = match;
-
+    const seen = new Set();
+    const pushTransaction = (dateStr, amountStr, description, raw) => {
+      const key = `${dateStr}|${amountStr}`;
+      if (seen.has(key)) return null;
       const date = this.parseDate(dateStr);
       const amount = this.parseAmount(amountStr);
+      if (!date || amount === 0) return null;
+      seen.add(key);
+      return {
+        date,
+        description: (description || "").trim(),
+        amount,
+        category: this.detectCategory(description || ""),
+        bank: "Тинькофф",
+        raw,
+        meta: { bank: "Тинькофф" },
+      };
+    };
 
-      if (date && amount !== 0) {
-        const transaction = {
-          date,
-          description: description.trim(),
-          amount,
-          category: this.detectCategory(description),
-          bank: "Тинькофф",
-          raw: match[0],
-          meta: {
-            bank: "Тинькофф",
-          },
-        };
-        transactions.push(transaction);
+    const transactions = [];
+    const skipped = [];
+
+    // Основной паттерн: дата время дата время сумма ₽ сумма ₽ описание [опционально 4 цифры в конце]
+    // Lookahead (?=\s+\d{4}|$) чтобы описание тянулось до пробела+4 цифр или конца, иначе +? даёт 1 символ
+    const mainPattern =
+      /(\d{2}\.\d{2}\.\d{4})\s+\d{2}:\d{2}\s+\d{2}\.\d{2}\.\d{4}\s+\d{2}:\d{2}\s+([+-]?\d[\d\s]*[.,]\d{2})\s*₽\s*(?:[+-]?\d[\d\s]*[.,]\d{2}\s*)?₽?\s*([А-Яа-яA-Za-z0-9 .№()%,'\"\/&\-–—]+?)(?=\s+\d{4}|$)(?:\s+\d{4})?/g;
+    let match;
+    let matchCount = 0;
+    while ((match = mainPattern.exec(text)) !== null) {
+      matchCount++;
+      const [, dateStr, amountStr, description] = match;
+      const t = pushTransaction(dateStr, amountStr, description, match[0]);
+      if (t) transactions.push(t);
+      else if (dateStr) skipped.push({ raw: match[0].slice(0, 80), dateStr, amountStr });
+    }
+
+    // Запасной паттерн: дата время [опционально вторая дата/время] сумма ₽ описание до следующей даты или конца
+    const fallbackPattern =
+      /(\d{2}\.\d{2}\.\d{4})\s+\d{2}:\d{2}\s+(?:\d{2}\.\d{2}\.\d{4}\s+\d{2}:\d{2}\s+)?([+-]?\d[\d\s]*[.,]\d{2})\s*₽\s*([\s\S]*?)(?=\d{2}\.\d{2}\.\d{4}\s+\d{2}:\d{2}|$)/g;
+    while ((match = fallbackPattern.exec(text)) !== null) {
+      const [, dateStr, amountStr, description] = match;
+      const desc = description.replace(/\s+/g, " ").trim().slice(0, 500);
+      const t = pushTransaction(dateStr, amountStr, desc, match[0]);
+      if (t) transactions.push(t);
+    }
+
+    if (matchCount > 0 || text.length > 100) {
+      console.log("[Тинькофф парсер]", {
+        regexMatches: matchCount,
+        added: transactions.length,
+        skipped: skipped.length,
+        textSample: text.slice(0, 400).replace(/\s+/g, " "),
+      });
+      if (skipped.length > 0) {
+        console.warn("[Тинькофф] пропущенные строки (дата/сумма не распознаны):", skipped.slice(0, 10));
       }
     }
 

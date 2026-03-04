@@ -5,10 +5,7 @@ import Table from "./ui/Table.vue";
 import CategorySelect from "./ui/CategorySelect.vue";
 import UniversalSelect from "./ui/UniversalSelect.vue";
 import DateEditor from "./ui/DateEditor.vue";
-import {
-  aggregateTransactions,
-  filterAndSortTransactions,
-} from "../services/pdfParser";
+import { aggregateTransactions, filterAndSortTransactions } from "../services/pdfParser";
 import {
   saveTransactionsToDb,
   saveTransactionToDb,
@@ -77,7 +74,7 @@ async function loadUserCategoriesFromDb() {
       window.dispatchEvent(
         new CustomEvent("categories-updated", {
           detail: { categories: availableCategories.value },
-        })
+        }),
       );
     }
   } catch (error) {
@@ -94,7 +91,7 @@ watch(
       // availableCategories автоматически обновится
     });
   },
-  { deep: true }
+  { deep: true },
 );
 
 // Уведомления
@@ -134,6 +131,20 @@ function getTransactionId(transaction) {
   }-${transaction.bank}-${transaction.category || ""}`;
 }
 
+// Ключ для сопоставления с исходной транзакцией в statements (без категории:
+// в aggregateTransactions категория подставляется через normalizeCategories, у исходной может быть пусто)
+function getTransactionMatchKey(transaction) {
+  const d = transaction.date;
+  const dateStr =
+    d instanceof Date
+      ? d.toISOString().slice(0, 10)
+      : typeof d === "string"
+        ? d.slice(0, 10)
+        : String(d ?? "");
+  const desc = (transaction.description || "").replace(/\s+/g, " ").trim();
+  return `${dateStr}|${desc}|${transaction.amount}|${transaction.bank || ""}`;
+}
+
 function isTransactionSelected(transaction) {
   return selectedTransactions.value.has(getTransactionId(transaction));
 }
@@ -153,7 +164,7 @@ function showBulkDeleteConfirmation() {
 async function deleteSelectedTransactions() {
   try {
     const transactionsToDelete = filtered.value.filter((transaction) =>
-      selectedTransactions.value.has(getTransactionId(transaction))
+      selectedTransactions.value.has(getTransactionId(transaction)),
     );
 
     if (isDatabaseMode.value) {
@@ -187,11 +198,11 @@ async function deleteSelectedTransactions() {
       // Удаляем из памяти
       for (const transaction of transactionsToDelete) {
         const statementIndex = statements.value.findIndex((s) =>
-          s.transactions.some((t) => getTransactionId(t) === getTransactionId(transaction))
+          s.transactions.some((t) => getTransactionId(t) === getTransactionId(transaction)),
         );
         if (statementIndex !== -1) {
           const transactionIndex = statements.value[statementIndex].transactions.findIndex(
-            (t) => getTransactionId(t) === getTransactionId(transaction)
+            (t) => getTransactionId(t) === getTransactionId(transaction),
           );
           if (transactionIndex !== -1) {
             statements.value[statementIndex].transactions.splice(transactionIndex, 1);
@@ -236,7 +247,7 @@ function showBulkEditConfirmation() {
 async function saveBulkEdit() {
   try {
     const transactionsToEdit = filtered.value.filter((transaction) =>
-      selectedTransactions.value.has(getTransactionId(transaction))
+      selectedTransactions.value.has(getTransactionId(transaction)),
     );
 
     if (transactionsToEdit.length === 0) {
@@ -267,7 +278,7 @@ async function saveBulkEdit() {
       const transactionsWithoutId = transactionsToEdit.filter((t) => !t.id);
       if (transactionsWithoutId.length > 0) {
         throw new Error(
-          `Некоторые транзакции не имеют ID для обновления в базе данных (${transactionsWithoutId.length})`
+          `Некоторые транзакции не имеют ID для обновления в базе данных (${transactionsWithoutId.length})`,
         );
       }
 
@@ -280,7 +291,9 @@ async function saveBulkEdit() {
 
           // Обновляем локальный объект транзакции
           for (const statement of statements.value) {
-            const transactionIndex = statement.transactions.findIndex((t) => t.id === transaction.id);
+            const transactionIndex = statement.transactions.findIndex(
+              (t) => t.id === transaction.id,
+            );
             if (transactionIndex !== -1) {
               Object.assign(statement.transactions[transactionIndex], updates);
               break;
@@ -293,7 +306,7 @@ async function saveBulkEdit() {
 
       notify(
         `Обновлено ${updatedCount} из ${transactionsToEdit.length} транзакций`,
-        updatedCount === transactionsToEdit.length ? "success" : "warning"
+        updatedCount === transactionsToEdit.length ? "success" : "warning",
       );
 
       // Перезагружаем данные из базы для полной синхронизации
@@ -338,7 +351,7 @@ async function addStatement(newStatement) {
     (s) =>
       s.fileName === newStatement.fileName &&
       s.period?.from?.toString() === newStatement.period?.from?.toString() &&
-      s.period?.to?.toString() === newStatement.period?.to?.toString()
+      s.period?.to?.toString() === newStatement.period?.to?.toString(),
   );
   if (isDuplicateFile) {
     notify("Этот файл уже был загружен", "warning");
@@ -346,13 +359,18 @@ async function addStatement(newStatement) {
   }
 
   try {
-    // Сохраняем все транзакции как есть (без удаления одинаковых)
-    statements.value.push(newStatement);
+    // Банк известен — пользователь выбрал его перед загрузкой; проставляем его всем транзакциям
+    const normalized = {
+      ...newStatement,
+      transactions: newStatement.transactions.map((t) => ({
+        ...t,
+        bank: t.bank || newStatement.bank,
+      })),
+    };
+    statements.value.push(normalized);
 
-    // Обновляем ключ таблицы для принудительного перерендера
     tableKey.value = tableKey.value + 1;
-
-    notify(`Добавлено транзакций: ${newStatement.transactions.length}`, "success");
+    notify(`Добавлено транзакций: ${normalized.transactions.length}`, "success");
   } catch (error) {
     console.error("Ошибка при проверке дубликатов:", error);
     notify("Ошибка при проверке дубликатов", "error");
@@ -474,7 +492,7 @@ function updateDateRange() {
     // Используем локальное время для избежания проблем с часовыми поясами
     dateFrom.value = `${year}-${String(month).padStart(2, "0")}-01`;
     dateTo.value = `${year}-${String(month).padStart(2, "0")}-${String(
-      endOfMonth.getDate()
+      endOfMonth.getDate(),
     ).padStart(2, "0")}`;
   } else if (selectedYear.value) {
     // Выбран только год
@@ -506,7 +524,7 @@ function updateDateRange() {
     // Используем локальное время для избежания проблем с часовыми поясами
     dateFrom.value = `${yearToUse}-${String(month).padStart(2, "0")}-01`;
     dateTo.value = `${yearToUse}-${String(month).padStart(2, "0")}-${String(
-      endOfMonth.getDate()
+      endOfMonth.getDate(),
     ).padStart(2, "0")}`;
 
     // Автоматически устанавливаем год в селекте
@@ -573,11 +591,11 @@ function getBanks() {
 
 // Получаем уникальные банки и категории для фильтров
 const banks = computed(() =>
-  Array.from(new Set(allTransactions.value.map((t) => t.bank))).filter(Boolean)
+  Array.from(new Set(allTransactions.value.map((t) => t.bank))).filter(Boolean),
 );
 
 const categories = computed(() =>
-  Array.from(new Set(allTransactions.value.map((t) => t.category))).filter(Boolean)
+  Array.from(new Set(allTransactions.value.map((t) => t.category))).filter(Boolean),
 );
 
 // Доступные категории для селекта (только те, что есть в транзакциях)
@@ -600,7 +618,7 @@ async function onCategoryAdded(newCategory) {
     window.dispatchEvent(
       new CustomEvent("categories-updated", {
         detail: { categories: availableCategories.value },
-      })
+      }),
     );
   }
 
@@ -679,16 +697,14 @@ const filtered = computed(() => {
     // Не применяем сортировку во время редактирования
     isEditing.value
       ? { field: "date", direction: "desc" }
-      : { field: sortField.value, direction: sortDirection.value }
+      : { field: sortField.value, direction: sortDirection.value },
   );
 
   return arr;
 });
 
 // Итоговая сумма по отфильтрованным транзакциям
-const filteredTotal = computed(() =>
-  filtered.value.reduce((sum, t) => sum + (t.amount || 0), 0)
-);
+const filteredTotal = computed(() => filtered.value.reduce((sum, t) => sum + (t.amount || 0), 0));
 
 function setSort(field) {
   if (sortField.value === field) {
@@ -970,25 +986,29 @@ async function deleteTransaction() {
         throw new Error("Транзакция не имеет ID для удаления из базы данных");
       }
     } else {
-      // Удаляем из statements (несохраненные данные)
+      // Удаляем из statements; банк у транзакций уже проставлен при добавлении выписки
+      const matchKey = getTransactionMatchKey(transactionToDelete.value);
+      let removed = false;
       for (let i = 0; i < statements.value.length; i++) {
         const statement = statements.value[i];
         const transactionIndex = statement.transactions.findIndex(
-          (t) => t === transactionToDelete.value
+          (t) => getTransactionMatchKey(t) === matchKey,
         );
         if (transactionIndex !== -1) {
           statement.transactions.splice(transactionIndex, 1);
-          // Если в выписке не осталось транзакций, удаляем её
           if (statement.transactions.length === 0) {
             statements.value.splice(i, 1);
           }
+          removed = true;
           break;
         }
       }
-      notify("Транзакция удалена из несохраненных данных", "success");
-
-      // Принудительно обновляем таблицу для несохраненных данных
-      tableKey.value++;
+      if (removed) {
+        notify("Транзакция удалена из несохраненных данных", "success");
+        tableKey.value++;
+      } else {
+        notify("Не удалось найти транзакцию в загруженных данных", "warning");
+      }
     }
 
     // Закрываем модальное окно
@@ -1100,10 +1120,10 @@ defineExpose({
         n.type === 'success'
           ? 'bg-green-100 text-green-800'
           : n.type === 'warning'
-          ? 'bg-yellow-100 text-yellow-800'
-          : n.type === 'error'
-          ? 'bg-red-100 text-red-800'
-          : 'bg-blue-100 text-blue-800',
+            ? 'bg-yellow-100 text-yellow-800'
+            : n.type === 'error'
+              ? 'bg-red-100 text-red-800'
+              : 'bg-blue-100 text-blue-800',
       ]"
     >
       {{ n.msg }}
@@ -1192,12 +1212,23 @@ defineExpose({
     </div>
     <div>
       <label class="block text-xs mb-1">Поиск</label>
-      <input
-        type="text"
-        v-model="search"
-        placeholder="Описание, категория, комментарий..."
-        class="border rounded px-2 py-1 h-8"
-      />
+      <div class="relative inline-block">
+        <input
+          type="text"
+          v-model="search"
+          placeholder="Описание, категория, комментарий..."
+          class="border rounded px-2 py-1 h-8 pr-7 w-48"
+        />
+        <button
+          v-show="search"
+          type="button"
+          aria-label="Очистить поиск"
+          class="absolute right-1 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+          @click="search = ''"
+        >
+          ×
+        </button>
+      </div>
     </div>
 
     <div>
@@ -1381,15 +1412,18 @@ defineExpose({
   </Table>
 
   <!-- Итоговая сумма по выбранным фильтрам -->
-  <div class="mt-3 flex items-center justify-between text-sm text-gray-700 bg-gray-50 p-3 rounded border">
+  <div
+    class="mt-3 flex items-center justify-between text-sm text-gray-700 bg-gray-50 p-3 rounded border"
+  >
     <div>Показано: {{ filtered.length }}</div>
     <div>
       Итого по фильтрам:
       <span :class="filteredTotal >= 0 ? 'text-green-700' : 'text-red-700'">
-        {{ filteredTotal >= 0 ? '+' : '' }}{{
-          filteredTotal.toLocaleString('ru-RU', {
-            style: 'currency',
-            currency: 'RUB',
+        {{ filteredTotal >= 0 ? "+" : ""
+        }}{{
+          filteredTotal.toLocaleString("ru-RU", {
+            style: "currency",
+            currency: "RUB",
             minimumFractionDigits: 0,
           })
         }}

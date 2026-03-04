@@ -116,7 +116,11 @@ const processFiles = async (files) => {
     if (results.length > 0) {
       if (results.length === 1) {
         parsedData.value = results[0];
-
+        console.log("[Загрузка файла]", {
+          file: results[0].fileName,
+          bank: results[0].bank,
+          transactions: results[0].transactions?.length ?? 0,
+        });
         emit("file-parsed", results[0]);
       } else {
         // Объединяем результаты нескольких файлов

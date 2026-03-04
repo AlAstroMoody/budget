@@ -244,7 +244,8 @@ const props = defineProps({
 
 defineEmits(["close"]);
 
-const selectedYear = ref("");
+const currentYear = new Date().getFullYear().toString();
+const selectedYear = ref(currentYear);
 
 // Редактируемые категории
 const editableCategories = ref([]);
@@ -476,6 +477,18 @@ watch(
   [categories, dbCategories, () => props.transactions],
   async () => {
     await initEditableCategories();
+  },
+  { immediate: true }
+);
+
+// По умолчанию открываем с текущим годом; если его нет в данных — выбираем последний доступный
+watch(
+  availableYears,
+  (years) => {
+    if (years.length === 0) return;
+    const inList = years.includes(selectedYear.value);
+    if (inList) return;
+    selectedYear.value = years.includes(currentYear) ? currentYear : years[years.length - 1];
   },
   { immediate: true }
 );

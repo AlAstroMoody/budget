@@ -103,7 +103,14 @@ export class PdfParser {
       }
 
       // Извлекаем транзакции
-      const transactions = this.extractTransactions(fullText, bankFormat).map((t) => ({
+      const extracted = this.extractTransactions(fullText, bankFormat);
+      console.log("[PDF парсер]", {
+        fileName: file.name,
+        bank: bankFormat.bankName,
+        textLength: fullText.length,
+        transactionsExtracted: extracted.length,
+      });
+      const transactions = extracted.map((t) => ({
         date: t.date,
         description: t.description,
         amount: t.amount,
@@ -144,7 +151,14 @@ export class PdfParser {
       // Используем банк-специфичный парсер для извлечения транзакций
       const transactions = bankParser.extractTransactions(processedText);
 
-      // Возвращаем транзакции как есть (без удаления возможных дублей)
+      if (transactions.length === 0 && processedText.length > 200) {
+        console.warn("[PDF] Транзакции не найдены", {
+          bank: bankFormat.bankKey,
+          textLength: processedText.length,
+          textSample: processedText.slice(0, 600),
+        });
+      }
+
       return transactions;
     } catch (error) {
       console.error(`Ошибка при извлечении транзакций для банка ${bankFormat.bankKey}:`, error);
